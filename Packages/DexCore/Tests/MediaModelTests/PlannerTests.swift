@@ -134,11 +134,20 @@ struct PlannerTests {
         #expect(result.verdict == .lossless)
     }
 
+    @Test func hdrIsKeptWhereTheFormatAllowsIt() throws {
+        for target in [ImageFormat.jpeg, .heic, .avif] {
+            let result = try plan(info(.heic, hdr: true), to: target)
+            #expect(result.preservesHDR, "\(target)")
+            #expect(!result.notes.contains(.hdrDropped(to: target)))
+        }
+    }
+
     @Test func hdrIsNeverDroppedSilently() throws {
-        for target in [ImageFormat.png, .jpeg, .tiff] {
+        for target in [ImageFormat.png, .tiff, .gif] {
             let result = try plan(info(.heic, hdr: true), to: target)
             #expect(result.verdict == .lossy)
-            #expect(result.notes.contains(.hdrDropped))
+            #expect(!result.preservesHDR)
+            #expect(result.notes.contains(.hdrDropped(to: target)))
         }
     }
 

@@ -58,6 +58,33 @@ struct FixtureFactory {
         return url
     }
 
+    /// An HDR image with an ISO gain map, encoded by ImageIO from a
+    /// float image whose highlights reach 4× SDR white.
+    func hdrImage(_ format: ImageFormat, width: Int = 64, height: Int = 48) throws -> URL {
+        guard let space = CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3),
+              let context = CGContext(
+                data: nil, width: width, height: height, bitsPerComponent: 16, bytesPerRow: 0, space: space,
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.floatComponents.rawValue
+                    | CGBitmapInfo.byteOrder16Little.rawValue
+              )
+        else { throw FixtureError.context }
+        for x in 0..<width {
+            let brightness = 0.2 + 3.8 * CGFloat(x) / CGFloat(width - 1)
+            context.setFillColor(CGColor(colorSpace: space, components: [brightness, brightness * 0.9, brightness * 0.7, 1])!)
+            context.fill(CGRect(x: x, y: 0, width: 1, height: height))
+        }
+        guard let base = context.makeImage(), let image = CGImageCreateCopyWithContentHeadroom(4, base) else { throw FixtureError.context }
+        let url = directory.appendingPathComponent("hdr.\(format.preferredFileExtension)")
+        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, format.typeIdentifier as CFString, 1, nil) else {
+            throw FixtureError.unsupported(format)
+        }
+        CGImageDestinationAddImage(destination, image, [
+            kCGImageDestinationEncodeRequest: kCGImageDestinationEncodeToISOGainmap,
+        ] as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { throw FixtureError.encodeFailed(format) }
+        return url
+    }
+
     /// A 1×1 lossless WebP, since ImageIO cannot encode WebP.
     func webp() throws -> URL {
         let data = Data(base64Encoded: "UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==")!

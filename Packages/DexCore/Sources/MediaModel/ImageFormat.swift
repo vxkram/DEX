@@ -82,6 +82,16 @@ public enum ImageFormat: String, Codable, Sendable, CaseIterable {
         supportsLossless || self == .gif
     }
 
+    /// Whether an HDR gain map can be stored alongside the image, verified
+    /// by decoding the output to HDR on macOS 27. PNG, TIFF and GIF have no
+    /// standard place for one.
+    public var supportsGainMap: Bool {
+        switch self {
+        case .jpeg, .heic, .avif: true
+        case .png, .tiff, .gif, .heif, .webp: false
+        }
+    }
+
     /// Whether the encoder keeps an EXIF-style orientation tag. ImageIO's
     /// AVIF encoder silently drops it (macOS 27), so rotation must be
     /// applied to the pixels instead.

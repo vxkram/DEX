@@ -81,14 +81,12 @@ extension ImageEngine {
                 options[kCGImageDestinationMetadata] = removingLocation(from: metadata)
             }
         case .removeAll:
-            // `kCGImageDestinationOrientation` can't be combined with
-            // `kCGImageDestinationMetadata`, so orientation goes in as a tag.
-            let metadata = CGImageMetadataCreateMutable()
-            CGImageMetadataSetValueMatchingImageProperty(
-                metadata, kCGImagePropertyTIFFDictionary, kCGImagePropertyTIFFOrientation,
-                orientation(of: source) as CFNumber
-            )
-            options[kCGImageDestinationMetadata] = metadata
+            // Trim a copy of the source metadata down to orientation. Building
+            // fresh metadata instead drops Apple's HDR maker note (HDR renders
+            // dimmer), and empty metadata makes HEIC keep everything.
+            if let metadata = CGImageSourceCopyMetadataAtIndex(source, 0, nil) {
+                options[kCGImageDestinationMetadata] = keeping(["tiff:Orientation"], from: metadata)
+            }
         }
         var error: Unmanaged<CFError>?
         guard CGImageDestinationCopyImageSource(destination, source, options as CFDictionary, &error) else {
@@ -130,10 +128,12 @@ extension ImageEngine {
                 properties[kCGImagePropertyGPSDictionary] = kCFNull
             case .removeAll:
                 // Only what's needed to display the frames correctly.
+                let hdrBrightness = hdrMakerNote(properties)
                 properties = properties.filter { key, _ in
                     [kCGImagePropertyOrientation, kCGImagePropertyGIFDictionary,
                      kCGImageDestinationLossyCompressionQuality].contains(key)
                 }
+                properties[kCGImagePropertyMakerAppleDictionary] = hdrBrightness
             }
             if plan.appliesOrientation {
                 properties[kCGImagePropertyOrientation] = 1
@@ -148,6 +148,9 @@ extension ImageEngine {
                 CGImageDestinationAddImageFromSource(destination, source, index, properties as CFDictionary)
             }
             progress?(Double(index + 1) / Double(frames) * 0.95)
+        }
+        if plan.preservesHDR {
+            try copyGainMaps(from: source, to: destination, orientation: plan.appliesOrientation ? orientation(of: source) : 1)
         }
         try token.check()
         guard CGImageDestinationFinalize(destination) else {
@@ -175,6 +178,9 @@ extension ImageEngine {
         }
         if info.frameCount != plan.expectedFrameCount {
             throw ConvertError.verificationFailed("\(info.frameCount) frames, expected \(plan.expectedFrameCount)")
+        }
+        if plan.preservesHDR && !info.hasHDRGainMap {
+            throw ConvertError.verificationFailed("the HDR gain map was lost")
         }
         if plan.request.metadata != .keepAll && info.hasGPS {
             throw ConvertError.verificationFailed("location data is still present")
@@ -208,19 +214,70 @@ extension ImageEngine {
         return image
     }
 
+    /// Copies the source's own gain map rather than re-deriving one, which
+    /// keeps the SDR image and HDR highlights as the camera made them.
+    private static func copyGainMaps(from source: CGImageSource, to destination: CGImageDestination, orientation: Int) throws {
+        for type in [kCGImageAuxiliaryDataTypeHDRGainMap, kCGImageAuxiliaryDataTypeISOGainMap] {
+            guard var info = CGImageSourceCopyAuxiliaryDataInfoAtIndex(source, 0, type) as? [CFString: Any] else { continue }
+            if orientation != 1 {
+                info = try orientedGainMap(info, orientation)
+            }
+            CGImageDestinationAddAuxiliaryDataInfo(destination, type, info as CFDictionary)
+        }
+    }
+
+    private static func orientedGainMap(_ info: [CFString: Any], _ orientation: Int) throws -> [CFString: Any] {
+        guard let data = info[kCGImageAuxiliaryDataInfoData] as? Data,
+              var description = info[kCGImageAuxiliaryDataInfoDataDescription] as? [String: Any],
+              let width = description["Width"] as? Int, width > 0,
+              let height = description["Height"] as? Int,
+              let bytesPerRow = description["BytesPerRow"] as? Int
+        else {
+            throw ConvertError.verificationFailed("unreadable HDR gain map")
+        }
+        let bitmap = RawBitmap(
+            data: data, width: width, height: height, bytesPerRow: bytesPerRow,
+            bytesPerPixel: max(bytesPerRow / width, 1)
+        ).oriented(orientation)
+        description["Width"] = bitmap.width
+        description["Height"] = bitmap.height
+        description["BytesPerRow"] = bitmap.bytesPerRow
+        var result = info
+        result[kCGImageAuxiliaryDataInfoData] = bitmap.data
+        result[kCGImageAuxiliaryDataInfoDataDescription] = description
+        return result
+    }
+
+    /// Apple's gain maps need the HDR headroom values in maker-note tags 33
+    /// and 48; without them the HDR renders dimmer (4.0× → 3.48× measured).
+    /// They describe the image, not the person, so "remove all" keeps them.
+    private static func hdrMakerNote(_ properties: [CFString: Any]) -> [String: Any]? {
+        guard let maker = properties[kCGImagePropertyMakerAppleDictionary] as? [String: Any] else { return nil }
+        let kept = maker.filter { ["33", "48"].contains($0.key) }
+        return kept.isEmpty ? nil : kept
+    }
+
     private static func orientation(of source: CGImageSource) -> Int {
         let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         return properties?[kCGImagePropertyOrientation] as? Int ?? 1
     }
 
     private static func removingLocation(from metadata: CGImageMetadata) -> CGMutableImageMetadata {
+        removingTags(from: metadata) { $0.hasPrefix("exif:GPS") }
+    }
+
+    private static func keeping(_ paths: Set<String>, from metadata: CGImageMetadata) -> CGMutableImageMetadata {
+        removingTags(from: metadata) { !paths.contains($0) }
+    }
+
+    private static func removingTags(from metadata: CGImageMetadata, where shouldRemove: (String) -> Bool) -> CGMutableImageMetadata {
         let copy = CGImageMetadataCreateMutableCopy(metadata) ?? CGImageMetadataCreateMutable()
-        var gpsPaths: [CFString] = []
+        var doomed: [CFString] = []
         CGImageMetadataEnumerateTagsUsingBlock(metadata, nil, nil) { path, _ in
-            if (path as String).hasPrefix("exif:GPS") { gpsPaths.append(path) }
+            doomed.append(path)
             return true
         }
-        for path in gpsPaths {
+        for path in doomed where shouldRemove(path as String) {
             CGImageMetadataRemoveTagWithPath(copy, nil, path)
         }
         return copy

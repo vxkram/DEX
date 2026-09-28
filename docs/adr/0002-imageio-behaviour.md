@@ -14,3 +14,17 @@ These results come from probes and are locked in by tests in `ImageEngineTests`.
 | Transparency encoded to JPEG is composited onto white | Matches what users expect | Disclosed as `transparencyFlattened`; tested |
 | **HEIF/AVIF encoding blocks on internal work and deadlocks** when every Swift cooperative-pool thread is inside an encoder | The app and tests hang under parallel load | All blocking media work runs on `MediaWork`'s dispatch queue, never directly on the cooperative pool. Cancellation is bridged with `CancellationToken` |
 | ImageIO writes AVIF on macOS 26.6 and 27.0, but not WebP or `public.heif` | libavif isn't needed; libwebp is | The runtime `writableFormats()` check stays in place |
+
+## HDR gain maps (added 2026-09-29)
+
+Measured with a real iPhone HEIC (Apple gain map, 4.0× headroom) by decoding every output with `kCGImageSourceDecodeToHDR`.
+
+| Behaviour | Handling |
+|---|---|
+| Re-encoding drops the gain map unless it is copied explicitly | `CGImageSourceCopyAuxiliaryDataInfoAtIndex` → `CGImageDestinationAddAuxiliaryDataInfo` for JPEG, HEIC and AVIF (all keep 4.0×). PNG, TIFF and GIF can't store one, so `hdrDropped` is disclosed |
+| Letting ImageIO re-derive an ISO gain map (`EncodeToISOGainmap`) keeps the headroom but changes the SDR image (33 dB vs 52 dB) | Not used. The camera's own gain map is copied |
+| Apple gain maps depend on MakerApple tags 33/48. Without them HDR renders at 3.48× | "Remove all metadata" keeps those two tags (re-encode) or the maker note (metadata rewrite). They describe the image, not the person |
+| Building **fresh** metadata for `CopyImageSource` drops the maker note. **Empty** metadata makes HEIC keep *everything*, including GPS | Remove-all trims a *copy* of the source metadata down to `tiff:Orientation` |
+| AVIF output must rotate pixels (ADR above), so its gain map must rotate too | `RawBitmap.oriented`, a lossless pixel shuffle. A test checks it matches ImageIO's own transform for all 8 orientations |
+
+Every plan that promises HDR is verified after writing: an output missing its gain map is never saved. For the reference photo, the difference in HDR rendering is 0.0 (HEIC), 0.004 (JPEG q95) and 0.003 (AVIF q95, rotated), against 0.10 with HDR dropped. Run the real-photo checks with `make test-hdr HDR_SAMPLE=~/path/IMG_1234.HEIC`. They are skipped in CI so no personal photos are committed.

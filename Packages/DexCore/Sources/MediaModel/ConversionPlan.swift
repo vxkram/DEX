@@ -68,7 +68,7 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
     case transparencyFlattened
     case animationFirstFrameOnly(frames: Int)
     case bitDepthReduced(from: Int, to: Int)
-    case hdrDropped
+    case hdrDropped(to: ImageFormat)
     case metadataEditRequiresReencode(ImageFormat)
     // Information
     case noAdditionalLoss
@@ -95,8 +95,8 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
             "Animation will be reduced to its first frame (of \(frames))"
         case .bitDepthReduced(let from, let to):
             "Colour depth reduced from \(from)-bit to \(to)-bit"
-        case .hdrDropped:
-            "HDR gain map will be dropped (SDR only)"
+        case .hdrDropped(let format):
+            "HDR will be dropped: \(format.displayName) can't store a gain map, so bright highlights will look flatter on HDR screens"
         case .metadataEditRequiresReencode(let format):
             "\(format.displayName) metadata can't be edited without re-encoding the image"
         case .noAdditionalLoss:
@@ -106,7 +106,7 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
         case .locationRemoved:
             "Location data will be removed"
         case .allMetadataRemoved:
-            "All metadata except orientation will be removed"
+            "All metadata except orientation and the camera's HDR data will be removed"
         }
     }
 }
@@ -121,6 +121,8 @@ public struct ConversionPlan: Codable, Sendable, Equatable {
     /// A format that would avoid every loss in `notes`, offered to the user
     /// when the verdict is lossy.
     public var losslessAlternative: ImageFormat?
+    /// The output carries the source's HDR gain map. Checked after writing.
+    public var preservesHDR: Bool
     /// Rotate/flip the pixels upright instead of storing an orientation tag.
     public var appliesOrientation: Bool
     /// Output geometry as stored. Checked after writing.

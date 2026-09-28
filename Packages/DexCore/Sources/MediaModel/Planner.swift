@@ -91,8 +91,8 @@ public enum Planner {
             if let depth = source.bitsPerComponent, depth > target.maxBitsPerComponent {
                 losses.append(.bitDepthReduced(from: depth, to: target.maxBitsPerComponent))
             }
-            if source.hasHDRGainMap {
-                losses.append(.hdrDropped)
+            if source.hasHDRGainMap && !target.supportsGainMap {
+                losses.append(.hdrDropped(to: target))
             }
             if losses.isEmpty && !sourceFormat.supportsLossless && target.supportsLossless {
                 losses.append(.noAdditionalLoss)
@@ -107,6 +107,7 @@ public enum Planner {
             notes: notes,
             lossyQuality: lossyQuality,
             losslessAlternative: nil,
+            preservesHDR: source.hasHDRGainMap && target.supportsGainMap,
             appliesOrientation: appliesOrientation,
             expectedWidth: width,
             expectedHeight: height,

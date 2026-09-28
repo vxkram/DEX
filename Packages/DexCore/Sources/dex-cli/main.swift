@@ -187,8 +187,9 @@ func convert(_ arguments: [String]) async -> ExitCode {
             throw OutputError.wouldOverwriteSource(source.lastPathComponent)
         }
         if plan.verdict == .lossy && !options.allowLossy {
-            printError("\nThis conversion loses information. Re-run with --allow-lossy to accept it"
-                + (plan.losslessAlternative.map { ", or use --to \($0.rawValue) to avoid it." } ?? "."))
+            let escape = plan.losslessAlternative.map { ", or use --to \($0.rawValue) to avoid it." }
+                ?? ". No output format avoids every loss listed above."
+            printError("\nThis conversion loses information. Re-run with --allow-lossy to accept it" + escape)
             return .needsConsent
         }
         try await ImageEngine.convert(source, plan: plan, to: destination, overwrite: options.overwrite)

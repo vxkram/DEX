@@ -9,13 +9,19 @@ TEST_FLAGS := -Xswiftc -plugin-path -Xswiftc $(CLT_TESTING_PLUGINS)
 endif
 endif
 
-.PHONY: build test release cli formats clean
+.PHONY: build test test-hdr release cli formats clean
 
 build:
 	swift build --package-path $(PACKAGE)
 
 test:
 	swift test --package-path $(PACKAGE) $(TEST_FLAGS)
+
+# Extra checks against a real iPhone HDR photo (never committed).
+# Usage: make test-hdr HDR_SAMPLE=~/Downloads/IMG_1234.HEIC
+test-hdr:
+	@test -n "$(HDR_SAMPLE)" || (echo "set HDR_SAMPLE=<path to an iPhone HEIC>" && exit 64)
+	DEX_HDR_SAMPLE="$(HDR_SAMPLE)" swift test --package-path $(PACKAGE) $(TEST_FLAGS) --filter HDRTests
 
 release:
 	swift build --package-path $(PACKAGE) -c release
