@@ -2,7 +2,7 @@
 
 A native macOS media utility: drop a file, choose an action, export. Lossless whenever physically possible, never silently lossy.
 
-Status: **Phase 0 / early Phase 1**. The core engine and CLI exist; the app UI does not yet. See [`docs/PLAN.md`](docs/PLAN.md).
+Status: **Phase 1**. The engine and CLI can inspect and convert JPEG, PNG, HEIC, AVIF, TIFF and GIF with a lossless-first planner. The app UI and WebP output are not built yet. See [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Requirements
 - macOS 26+ on Apple Silicon
@@ -12,9 +12,10 @@ Status: **Phase 0 / early Phase 1**. The core engine and CLI exist; the app UI d
 ```
 Packages/DexCore/     SwiftPM package: engine + CLI + tests (no UI)
   Sources/MediaModel/     Value types and quality rules (Foundation only)
+  Sources/JobSystem/      Safe output (temp + atomic move) and the media work queue
   Sources/ImageEngine/    ImageIO-backed image processing
   Sources/dex-cli/    `dex` command-line tool
-docs/                     Plan, original brief, architecture decision records
+docs/                     Plan, original brief, architecture decision records (see adr/0002 for measured ImageIO quirks)
 ```
 
 ## Common tasks
@@ -22,4 +23,7 @@ docs/                     Plan, original brief, architecture decision records
 make test                                   # run all tests
 make formats                                # which image formats this Mac can read/write
 make cli ARGS="inspect ~/Pictures/a.heic"   # inspect a file (add --json for machine output)
+make cli ARGS="convert a.heic --to png"      # lossless: runs straight away
+make cli ARGS="convert a.heic --to jpeg"     # lossy: explains what's lost and waits for --allow-lossy
+make cli ARGS="convert a.heic --to jpeg --dry-run"  # show the plan only
 ```
