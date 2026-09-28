@@ -27,7 +27,6 @@ final class ImageDocument {
     var quality: QualityPreference = .maximum
     var metadata: MetadataPolicy = .removeLocation
     var exportState: ExportState = .idle
-    var isConfirmingLossyExport = false
 
     /// Formats this Mac can write, in display order.
     let writableFormats: [ImageFormat]
@@ -109,23 +108,12 @@ final class ImageDocument {
 
     // MARK: - Exporting
 
-    func requestExport() {
-        guard let plan, !isExporting else { return }
-        if plan.verdict == .lossy {
-            isConfirmingLossyExport = true
-        } else {
-            presentSavePanel()
-        }
-    }
-
-    func useLosslessAlternative() {
-        guard let alternative = plan?.losslessAlternative else { return }
-        target = alternative
-        presentSavePanel()
-    }
-
+    /// Opens the Save panel directly. Losses are listed in the Convert panel
+    /// and repeated in the Save panel's message, so the user is told before
+    /// anything is written, without stacking dialogs (a confirmation dialog
+    /// closing while the Save sheet opened made the sheet vanish).
     func presentSavePanel() {
-        guard let sourceURL, let plan else { return }
+        guard let sourceURL, let plan, !isExporting else { return }
         let panel = NSSavePanel()
         let format = plan.request.target
         panel.nameFieldStringValue = SafeOutput.defaultDestination(
@@ -135,6 +123,10 @@ final class ImageDocument {
         panel.allowedContentTypes = UTType(format.typeIdentifier).map { [$0] } ?? []
         panel.canCreateDirectories = true
         panel.isExtensionHidden = false
+        let losses = plan.notes.filter(\.isLoss).map(\.description)
+        panel.message = losses.isEmpty
+            ? "\(plan.verdict.label): no quality is lost."
+            : "This export loses information: " + losses.joined(separator: "; ") + "."
 
         let handler: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard response == .OK, let destination = panel.url else { return }

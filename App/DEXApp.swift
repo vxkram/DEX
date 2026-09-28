@@ -9,17 +9,19 @@ struct DEXApp: App {
     var body: some Scene {
         Window("DEX", id: "main") {
             ContentView(document: document)
-                .frame(minWidth: 880, minHeight: 580)
-                .tint(.dexAccent)
+                .frame(minWidth: 900, minHeight: 600)
+                .tint(Theme.ember)
                 .onAppear { appDelegate.attach(document) }
         }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1180, height: 780)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Open…") { document.presentOpenPanel() }
                     .keyboardShortcut("o")
             }
             CommandGroup(replacing: .saveItem) {
-                Button("Export…") { document.requestExport() }
+                Button("Export…") { document.presentSavePanel() }
                     .keyboardShortcut("e")
                     .disabled(!document.canExport)
             }
@@ -52,9 +54,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
-}
-
-extension Color {
-    /// Burnished bronze: a quiet nod to Daedalus the craftsman.
-    static let dexAccent = Color(red: 0.78, green: 0.53, blue: 0.26)
 }

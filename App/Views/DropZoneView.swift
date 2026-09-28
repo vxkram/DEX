@@ -8,17 +8,22 @@ struct DropZoneView: View {
     let choose: () -> Void
 
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 22) {
+            Text("DEX")
+                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .tracking(6)
+                .foregroundStyle(.secondary)
+
             Image(systemName: "photo.badge.arrow.down")
-                .font(.system(size: 54, weight: .light))
-                .foregroundStyle(isTargeted ? Color.dexAccent : .secondary)
+                .font(.system(size: 50, weight: .ultraLight))
+                .foregroundStyle(isTargeted ? Theme.ember : .primary.opacity(0.85))
                 .symbolEffect(.bounce, value: isTargeted)
 
-            VStack(spacing: 6) {
+            VStack(spacing: 8) {
                 Text("Drop an image")
                     .font(.title2.weight(.semibold))
                 Text(formats.map(\.displayName).joined(separator: " · "))
-                    .font(.callout.monospaced())
+                    .font(.technicalSmall)
                     .foregroundStyle(.secondary)
             }
 
@@ -27,19 +32,21 @@ struct DropZoneView: View {
                 .buttonStyle(.glass)
                 .keyboardShortcut("o")
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+        .padding(.horizontal, 56)
+        .padding(.vertical, 44)
+        .frame(width: 440)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .strokeBorder(
-                    isTargeted ? Color.dexAccent : Color.secondary.opacity(0.35),
-                    style: StrokeStyle(lineWidth: isTargeted ? 2.5 : 1.5, dash: [8, 6])
+                    isTargeted ? Theme.ember : .white.opacity(0.08),
+                    style: StrokeStyle(lineWidth: isTargeted ? 2 : 1, dash: isTargeted ? [7, 5] : [])
                 )
-                .background(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(isTargeted ? Color.dexAccent.opacity(0.07) : .clear)
-                )
-                .padding(28)
         }
-        .animation(.easeOut(duration: 0.15), value: isTargeted)
+        .scaleEffect(isTargeted ? 1.02 : 1)
+        .animation(.spring(duration: 0.25), value: isTargeted)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .gesture(WindowDragGesture())
     }
 }

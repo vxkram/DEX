@@ -21,3 +21,6 @@ DerivedData/
 # Editors
 .vscode/
 .idea/
+
+# Original design source images (large); app uses compressed copies in App/Resources
+bg/
