@@ -19,4 +19,4 @@ Date: 2026-09-29 · Status: accepted
 
 ## Consequences
 - The UI isn't portable. For portability, `MediaModel` stays Foundation-only; a future Windows/Linux port reuses the model and tests and replaces the engines and UI.
-- **Verified 2026-09-29 on macOS 27.0 (`dex formats`):** ImageIO writes JPEG, PNG, HEIC, AVIF, TIFF and GIF. It does not write WebP or `public.heif`. AVIF writability on macOS 26 still needs checking.
+- **Verified 2026-09-29 on macOS 27.0 (`dex formats`):** ImageIO writes JPEG, PNG, HEIC, AVIF, TIFF and GIF. It does not write WebP or `public.heif`. CI on macOS 26.6.2 (Xcode 26.6) reports the same, so AVIF encoding is native on the whole supported range and libavif is not needed.

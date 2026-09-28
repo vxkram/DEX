@@ -40,7 +40,7 @@
 | Finder | "DEX ▸ Convert to JPEG / PNG / HEIC / WebP" (writes next to the original) and "Open in DEX" |
 | UX | Large preview, keyboard shortcuts, progress plus cancel, readable errors, Recents list |
 
-\*AVIF encoding: ImageIO reports it as writable on macOS 27. **VERIFY on macOS 26.** If it's missing there, hide AVIF output on 26 using a runtime check rather than adding libavif.
+\*AVIF encoding: **verified** writable via ImageIO on macOS 26.6.2 (CI) and 27.0 (local), so no libavif is needed. The runtime check stays in place as a safeguard.
 
 **Later (explicitly not in MVP)**
 - v1.x: batch UI, presets, text overlay, multiple overlays, Finder Action Extension popup, target-file-size compression, JPEG XL, Sparkle updates.
