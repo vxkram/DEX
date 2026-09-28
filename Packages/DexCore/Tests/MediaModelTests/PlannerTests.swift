@@ -3,7 +3,7 @@ import Testing
 
 @Suite("Planner")
 struct PlannerTests {
-    static let allWritable: Set<ImageFormat> = [.jpeg, .png, .heic, .avif, .tiff, .gif]
+    static let allWritable: Set<ImageFormat> = [.jpeg, .png, .heic, .avif, .webp, .tiff, .gif]
 
     func info(
         _ format: ImageFormat,
@@ -175,8 +175,29 @@ struct PlannerTests {
 
     @Test func refusesUnwritableTargets() {
         #expect(throws: PlanError.unsupportedTarget(.webp)) {
-            try Planner.plan(info(.png), ConvertRequest(target: .webp), writable: Self.allWritable)
+            try Planner.plan(info(.png), ConvertRequest(target: .webp), writable: [.png, .jpeg])
         }
+    }
+
+    @Test func webpIsLosslessAtMaximumAndLossyBelow() throws {
+        let lossless = try plan(info(.png, alpha: true), to: .webp)
+        #expect(lossless.verdict == .lossless)
+        #expect(lossless.lossyQuality == nil)
+
+        let lossy = try Planner.plan(info(.png), ConvertRequest(target: .webp, quality: .custom(0.8)), writable: Self.allWritable)
+        #expect(lossy.verdict == .lossy)
+        #expect(lossy.lossyQuality == 0.8)
+        #expect(lossy.notes.first == .lossyEncode(.webp, quality: 0.8))
+    }
+
+    @Test func webpRotatesPixelsAndConvertsNonRGB() throws {
+        var source = info(.jpeg, size: 400)
+        source.orientation = 6
+        source.colorModel = "CMYK"
+        let result = try plan(source, to: .webp)
+        #expect(result.appliesOrientation)
+        #expect(result.notes.contains(.colourModelConverted(from: "CMYK")))
+        #expect(result.verdict == .lossy)
     }
 
     @Test func refusesUnknownSources() {

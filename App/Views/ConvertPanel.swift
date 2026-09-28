@@ -28,9 +28,9 @@ struct ConvertPanel: View {
                         .controlSize(.large)
                     }
 
-                    if document.plan?.lossyQuality != nil {
+                    if document.target.hasLossyMode {
                         DisclosureGroup("Advanced", isExpanded: $showsAdvanced) {
-                            QualityControl(quality: $document.quality)
+                            QualityControl(quality: $document.quality, target: document.target)
                                 .padding(.top, 10)
                         }
                         .font(.callout)
@@ -98,6 +98,12 @@ private struct FormatGrid: View {
 
 private struct QualityControl: View {
     @Binding var quality: QualityPreference
+    let target: ImageFormat
+
+    /// At the top of the slider WebP switches to lossless encoding.
+    private var maximumLabel: String {
+        target.supportsLossless ? "Max · Lossless" : "Max · 95"
+    }
 
     var body: some View {
         let value = Binding<Double>(
@@ -108,7 +114,7 @@ private struct QualityControl: View {
             HStack {
                 Text("Quality")
                 Spacer()
-                Text(quality == .maximum ? "Max · 95" : "\(Int((value.wrappedValue * 100).rounded()))")
+                Text(quality == .maximum ? maximumLabel : "\(Int((value.wrappedValue * 100).rounded()))")
                     .font(.technical)
                     .foregroundStyle(.secondary)
             }

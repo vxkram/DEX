@@ -2,7 +2,7 @@
 
 A native macOS media utility: drop a file, choose an action, export. Lossless whenever physically possible, never silently lossy.
 
-Status: **Phase 1**. The engine and CLI can inspect and convert JPEG, PNG, HEIC, AVIF, TIFF and GIF with a lossless-first planner. The app UI and WebP output are not built yet. See [`docs/PLAN.md`](docs/PLAN.md).
+Status: **Phase 1**. The engine and CLI can inspect and convert JPEG, PNG, HEIC, AVIF, TIFF and GIF with a lossless-first planner. The app window (floating-glass UI) converts between all of them plus WebP. See [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Requirements
 - macOS 26+ on Apple Silicon

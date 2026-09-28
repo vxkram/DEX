@@ -15,7 +15,7 @@ struct InspectTests {
     @Test("Reads every natively writable MVP format", arguments: [ImageFormat.jpeg, .png, .heic, .tiff, .gif, .avif])
     func readsFormat(_ format: ImageFormat) throws {
         defer { fixtures.cleanUp() }
-        try #require(ImageEngine.canWrite(format), "\(format) is not writable on this macOS")
+        try #require(ImageEngine.canWriteNatively(format), "\(format) is not writable on this macOS")
         let url = try fixtures.image(format)
 
         let info = try ImageEngine.inspect(url: url)

@@ -8,7 +8,8 @@ public enum MetadataPolicy: String, Codable, Sendable, CaseIterable {
 }
 
 public enum QualityPreference: Codable, Sendable, Equatable {
-    /// The highest quality that still makes sense for the codec.
+    /// The highest quality that still makes sense for the codec: lossless
+    /// for WebP, 0.95 for JPEG, HEIC and AVIF.
     case maximum
     /// Lossy encoder quality, 0...1.
     case custom(Double)
@@ -69,6 +70,7 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
     case animationFirstFrameOnly(frames: Int)
     case bitDepthReduced(from: Int, to: Int)
     case hdrDropped(to: ImageFormat)
+    case colourModelConverted(from: String)
     case metadataEditRequiresReencode(ImageFormat)
     // Information
     case noAdditionalLoss
@@ -97,6 +99,8 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
             "Colour depth reduced from \(from)-bit to \(to)-bit"
         case .hdrDropped(let format):
             "HDR will be dropped: \(format.displayName) can't store a gain map, so bright highlights will look flatter on HDR screens"
+        case .colourModelConverted(let model):
+            "Colours will be converted from \(model) to sRGB, which can shift them slightly"
         case .metadataEditRequiresReencode(let format):
             "\(format.displayName) metadata can't be edited without re-encoding the image"
         case .noAdditionalLoss:

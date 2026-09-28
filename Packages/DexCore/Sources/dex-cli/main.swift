@@ -14,7 +14,7 @@ let usage = """
       help                         Show this message
 
     convert options:
-      --to <format>                jpeg, png, heic, avif, tiff, gif
+      --to <format>                jpeg, png, heic, avif, webp, tiff, gif
       --out <path>                 Output file (default: next to the original, never overwriting it)
       --quality max|<0-1>          Lossy encoder quality (default: max = 0.95)
       --metadata <policy>          keep | no-location (default) | none
@@ -211,7 +211,8 @@ struct FormatSupport: Encodable {
 
 func formats(_ arguments: [String]) -> ExitCode {
     let readable = Set(ImageEngine.readableTypeIdentifiers())
-    let writable = Set(ImageEngine.writableTypeIdentifiers())
+    let native = Set(ImageEngine.writableTypeIdentifiers())
+    let writable = Set(ImageEngine.writableFormats().map(\.typeIdentifier))
     let rows = ImageFormat.allCases.map {
         FormatSupport(
             format: $0.rawValue,
@@ -229,10 +230,11 @@ func formats(_ arguments: [String]) -> ExitCode {
         }
         return .ok
     }
-    print("format  read   write  (native ImageIO on macOS \(ProcessInfo.processInfo.operatingSystemVersionString))")
+    print("format  read   write  (macOS \(ProcessInfo.processInfo.operatingSystemVersionString))")
     for row in rows {
         let name = row.format.padding(toLength: 8, withPad: " ", startingAt: 0)
-        print("\(name)\(row.read ? "yes" : "no ")    \(row.write ? "yes" : "no")")
+        let via = row.write && !native.contains(row.typeIdentifier) ? "  (bundled encoder)" : ""
+        print("\(name)\(row.read ? "yes" : "no ")    \(row.write ? "yes" : "no ")\(via)")
     }
     return .ok
 }

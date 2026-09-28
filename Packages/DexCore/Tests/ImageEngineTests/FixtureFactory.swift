@@ -27,6 +27,8 @@ struct FixtureFactory {
         var orientation = 1
         var gps = false
         var frames = 1
+        /// Deterministic per-pixel noise, like a real photo's grain.
+        var noise = false
     }
 
     func image(_ format: ImageFormat, named name: String? = nil, _ spec: Spec = Spec()) throws -> URL {
@@ -115,6 +117,17 @@ struct FixtureFactory {
         }
         context.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
         context.fill(CGRect(x: seed % max(spec.width - 8, 1), y: 0, width: 8, height: 8))
+        if spec.noise {
+            var state: UInt32 = 0x9E37_79B9
+            for y in 0..<spec.height {
+                for x in 0..<spec.width {
+                    state = state &* 1_664_525 &+ 1_013_904_223
+                    let grain = CGFloat(state >> 24) / 255
+                    context.setFillColor(red: grain, green: grain * 0.8, blue: 1 - grain, alpha: 0.35)
+                    context.fill(CGRect(x: x, y: y, width: 1, height: 1))
+                }
+            }
+        }
         guard let image = context.makeImage() else { throw FixtureError.context }
         return image
     }

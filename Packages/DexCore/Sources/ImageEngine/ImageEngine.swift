@@ -81,8 +81,8 @@ public enum ImageEngine {
         (CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []).sorted()
     }
 
-    /// Whether DEX can currently produce this format natively.
-    public static func canWrite(_ format: ImageFormat) -> Bool {
+    /// Whether ImageIO itself can encode this format on this system.
+    public static func canWriteNatively(_ format: ImageFormat) -> Bool {
         writableTypeIdentifiers().contains(format.typeIdentifier)
     }
 

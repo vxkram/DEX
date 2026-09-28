@@ -93,10 +93,23 @@ public enum ImageFormat: String, Codable, Sendable, CaseIterable {
     }
 
     /// Whether the encoder keeps an EXIF-style orientation tag. ImageIO's
-    /// AVIF encoder silently drops it (macOS 27), so rotation must be
-    /// applied to the pixels instead.
+    /// AVIF encoder silently drops it (macOS 27), and browsers ignore
+    /// orientation in WebP, so for both the rotation goes into the pixels.
     public var supportsOrientationTag: Bool {
-        self != .avif
+        self != .avif && self != .webp
+    }
+
+    /// Whether the format only stores RGB, so grayscale and CMYK images must
+    /// be converted first.
+    public var requiresRGB: Bool { self == .webp }
+
+    /// Whether the encoder also has a lossy mode that a quality setting
+    /// selects. For WebP, maximum quality means lossless.
+    public var hasLossyMode: Bool {
+        switch self {
+        case .jpeg, .heic, .heif, .avif, .webp: true
+        case .png, .tiff, .gif: false
+        }
     }
 
     public init?(typeIdentifier: String) {

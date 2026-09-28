@@ -20,9 +20,10 @@ public enum ConvertError: Error, Equatable, CustomStringConvertible {
 }
 
 extension ImageEngine {
-    /// Formats DEX can currently write.
+    /// Formats DEX can currently write: ImageIO's encoders plus WebP
+    /// through the bundled libwebp.
     public static func writableFormats() -> Set<ImageFormat> {
-        Set(ImageFormat.allCases.filter(canWrite))
+        Set(ImageFormat.allCases.filter(canWriteNatively)).union([.webp])
     }
 
     /// Plans a conversion for a file on disk.
@@ -104,6 +105,10 @@ extension ImageEngine {
     ) throws {
         let source = try openSource(url)
         let target = plan.request.target
+        if target == .webp {
+            try WebPWriter.write(source, plan: plan, name: url.lastPathComponent, to: temporary, token: token, progress: progress)
+            return
+        }
         let frames = plan.expectedFrameCount
         guard let destination = CGImageDestinationCreateWithURL(
             temporary as CFURL, target.typeIdentifier as CFString, frames, nil
@@ -179,6 +184,9 @@ extension ImageEngine {
         if info.frameCount != plan.expectedFrameCount {
             throw ConvertError.verificationFailed("\(info.frameCount) frames, expected \(plan.expectedFrameCount)")
         }
+        if plan.appliesOrientation && info.orientation != 1 {
+            throw ConvertError.verificationFailed("orientation \(info.orientation) left on already-rotated pixels")
+        }
         if plan.preservesHDR && !info.hasHDRGainMap {
             throw ConvertError.verificationFailed("the HDR gain map was lost")
         }
@@ -198,7 +206,7 @@ extension ImageEngine {
 
     /// Full-resolution frame with its EXIF orientation applied to the pixels.
     /// A thumbnail request at the image's own size is an exact transform.
-    private static func uprightImage(_ source: CGImageSource, index: Int, name: String) throws -> CGImage {
+    static func uprightImage(_ source: CGImageSource, index: Int, name: String) throws -> CGImage {
         let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
         let width = properties?[kCGImagePropertyPixelWidth] as? Int ?? 0
         let height = properties?[kCGImagePropertyPixelHeight] as? Int ?? 0
@@ -270,7 +278,7 @@ extension ImageEngine {
         removingTags(from: metadata) { !paths.contains($0) }
     }
 
-    private static func removingTags(from metadata: CGImageMetadata, where shouldRemove: (String) -> Bool) -> CGMutableImageMetadata {
+    static func removingTags(from metadata: CGImageMetadata, where shouldRemove: (String) -> Bool) -> CGMutableImageMetadata {
         let copy = CGImageMetadataCreateMutableCopy(metadata) ?? CGImageMetadataCreateMutable()
         var doomed: [CFString] = []
         CGImageMetadataEnumerateTagsUsingBlock(metadata, nil, nil) { path, _ in

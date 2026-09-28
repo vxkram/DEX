@@ -74,7 +74,8 @@ public enum Planner {
                 (width, height) = (source.displayWidth, source.displayHeight)
                 info.append(.orientationApplied)
             }
-            if !target.supportsLossless && target != .gif {
+            let lossyWebP = target == .webp && request.quality != .maximum
+            if (!target.supportsLossless && target != .gif) || lossyWebP {
                 lossyQuality = request.quality.lossyValue
                 losses.append(.lossyEncode(target, quality: request.quality.lossyValue))
             }
@@ -90,6 +91,9 @@ public enum Planner {
             }
             if let depth = source.bitsPerComponent, depth > target.maxBitsPerComponent {
                 losses.append(.bitDepthReduced(from: depth, to: target.maxBitsPerComponent))
+            }
+            if target.requiresRGB, let model = source.colorModel, model != "RGB" {
+                losses.append(.colourModelConverted(from: model))
             }
             if source.hasHDRGainMap && !target.supportsGainMap {
                 losses.append(.hdrDropped(to: target))

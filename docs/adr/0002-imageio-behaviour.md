@@ -28,3 +28,12 @@ Measured with a real iPhone HEIC (Apple gain map, 4.0× headroom) by decoding ev
 | AVIF output must rotate pixels (ADR above), so its gain map must rotate too | `RawBitmap.oriented`, a lossless pixel shuffle. A test checks it matches ImageIO's own transform for all 8 orientations |
 
 Every plan that promises HDR is verified after writing: an output missing its gain map is never saved. For the reference photo, the difference in HDR rendering is 0.0 (HEIC), 0.004 (JPEG q95) and 0.003 (AVIF q95, rotated), against 0.10 with HDR dropped. Run the real-photo checks with `make test-hdr HDR_SAMPLE=~/path/IMG_1234.HEIC`. They are skipped in CI so no personal photos are committed.
+
+## WebP output via libwebp (added 2026-09-29)
+
+- ImageIO decodes WebP but cannot encode it, so libwebp 1.6.0 is vendored as the `CWebP` C target, with no build flags beyond a header search path.
+- **Maximum quality is lossless WebP with `exact`.** Pixels, including the RGB under fully transparent areas, are bit-identical (tested). Lower quality selects lossy (`PRESET_PHOTO`, `method 5`, `sharp_yuv`).
+- **Lossless effort 3:** on a 12 MP iPhone photo it takes 3.7 s and gives 5.62 MB, against 5.3 s and 5.61 MB at effort 6 (release build, M4 Pro). Lossy q85 takes 1.4 s and gives 561 KB.
+- **WebP has no orientation tag that browsers honour**, so rotation is applied to the pixels, and stale `tiff:Orientation`/pixel-dimension tags are removed from the XMP.
+- **Metadata** is written as an XMP chunk filtered by the policy. A test checks that keep-all carries GPS, so the path really works, and that the removal policies strip it. Colour profiles other than sRGB go into an ICCP chunk.
+- **WebP is RGB-only.** Grayscale and CMYK are converted to sRGB, and the plan discloses it (`colourModelConverted`).

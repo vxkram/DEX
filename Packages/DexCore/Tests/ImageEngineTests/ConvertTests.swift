@@ -9,6 +9,7 @@ import Testing
 @Suite("ImageEngine.convert")
 struct ConvertTests {
     static let nativeFormats: [ImageFormat] = [.jpeg, .png, .heic, .avif, .tiff, .gif]
+    static let allTargets = nativeFormats + [.webp]
     let fixtures: FixtureFactory
 
     init() throws {
@@ -36,7 +37,7 @@ struct ConvertTests {
         let source = try fixtures.image(sourceFormat, named: "source.\(sourceFormat.preferredFileExtension)")
         let before = try Data(contentsOf: source)
 
-        for target in Self.nativeFormats {
+        for target in Self.allTargets {
             let (output, _) = try await run(source, to: target)
             let info = try ImageEngine.inspect(url: output)
             #expect(info.format == target, "\(sourceFormat)→\(target)")
@@ -45,7 +46,7 @@ struct ConvertTests {
         #expect(try Data(contentsOf: source) == before, "source must never change")
     }
 
-    @Test("Location is removed for every target", arguments: nativeFormats)
+    @Test("Location is removed for every target", arguments: allTargets)
     func removesLocation(_ target: ImageFormat) async throws {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
