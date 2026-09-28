@@ -9,7 +9,7 @@ TEST_FLAGS := -Xswiftc -plugin-path -Xswiftc $(CLT_TESTING_PLUGINS)
 endif
 endif
 
-.PHONY: build test test-hdr release cli formats clean
+.PHONY: build test test-hdr release cli formats clean project app run xcode
 
 build:
 	swift build --package-path $(PACKAGE)
@@ -35,3 +35,24 @@ formats: build
 
 clean:
 	swift package --package-path $(PACKAGE) clean
+
+# --- macOS app -------------------------------------------------------------
+
+APP_BUILD := build/app
+APP := $(APP_BUILD)/Build/Products/Debug/DEX.app
+
+# Regenerate DEX.xcodeproj from project.yml (needs `brew install xcodegen`).
+project:
+	xcodegen generate --quiet
+
+app: project
+	xcodebuild -project DEX.xcodeproj -scheme DEX -configuration Debug \
+		-derivedDataPath $(APP_BUILD) -quiet build
+
+# Build and launch the app.
+run: app
+	open "$(APP)"
+
+xcode: project
+	open DEX.xcodeproj
+

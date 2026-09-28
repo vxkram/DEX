@@ -6,7 +6,8 @@
 .swiftpm/
 Package.resolved.orig
 
-# Xcode
+# Xcode (DEX.xcodeproj is generated from project.yml)
+DEX.xcodeproj/
 xcuserdata/
 DerivedData/
 *.xcuserstate
