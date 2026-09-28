@@ -1,0 +1,101 @@
+import CoreGraphics
+import Foundation
+import ImageIO
+import MediaModel
+
+/// Generates deterministic test images with ImageIO so no binary fixtures
+/// need to live in the repository.
+struct FixtureFactory {
+    let directory: URL
+
+    init() throws {
+        directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("dex-fixtures-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    func cleanUp() {
+        try? FileManager.default.removeItem(at: directory)
+    }
+
+    struct Spec {
+        var width = 64
+        var height = 48
+        var alpha = false
+        var bitsPerComponent = 8
+        var colorSpace: CFString = CGColorSpace.sRGB
+        var orientation = 1
+        var gps = false
+        var frames = 1
+    }
+
+    func image(_ format: ImageFormat, named name: String? = nil, _ spec: Spec = Spec()) throws -> URL {
+        let url = directory.appendingPathComponent(name ?? "fixture.\(format.preferredFileExtension)")
+        guard let destination = CGImageDestinationCreateWithURL(
+            url as CFURL, format.typeIdentifier as CFString, spec.frames, nil
+        ) else {
+            throw FixtureError.unsupported(format)
+        }
+        var properties: [CFString: Any] = [kCGImagePropertyOrientation: spec.orientation]
+        if spec.gps {
+            properties[kCGImagePropertyGPSDictionary] = [
+                kCGImagePropertyGPSLatitude: 12.97,
+                kCGImagePropertyGPSLatitudeRef: "N",
+                kCGImagePropertyGPSLongitude: 77.59,
+                kCGImagePropertyGPSLongitudeRef: "E",
+            ]
+        }
+        for frame in 0..<spec.frames {
+            CGImageDestinationAddImage(destination, try makeImage(spec, seed: frame), properties as CFDictionary)
+        }
+        guard CGImageDestinationFinalize(destination) else { throw FixtureError.encodeFailed(format) }
+        return url
+    }
+
+    func file(named name: String, contents: Data) throws -> URL {
+        let url = directory.appendingPathComponent(name)
+        try contents.write(to: url)
+        return url
+    }
+
+    /// A 1×1 lossless WebP, since ImageIO cannot encode WebP.
+    func webp() throws -> URL {
+        let data = Data(base64Encoded: "UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==")!
+        return try file(named: "fixture.webp", contents: data)
+    }
+
+    private func makeImage(_ spec: Spec, seed: Int) throws -> CGImage {
+        guard let colorSpace = CGColorSpace(name: spec.colorSpace) else { throw FixtureError.colorSpace }
+        let alphaInfo: CGImageAlphaInfo = spec.alpha ? .premultipliedLast : .noneSkipLast
+        var bitmapInfo = alphaInfo.rawValue
+        if spec.bitsPerComponent == 16 { bitmapInfo |= CGBitmapInfo.byteOrder16Little.rawValue }
+        guard let context = CGContext(
+            data: nil,
+            width: spec.width,
+            height: spec.height,
+            bitsPerComponent: spec.bitsPerComponent,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo
+        ) else {
+            throw FixtureError.context
+        }
+        // A simple gradient plus a seed-dependent block, so frames differ.
+        for x in 0..<spec.width {
+            let t = CGFloat(x) / CGFloat(max(spec.width - 1, 1))
+            context.setFillColor(red: t, green: 1 - t, blue: 0.5, alpha: spec.alpha ? 0.5 : 1)
+            context.fill(CGRect(x: x, y: 0, width: 1, height: spec.height))
+        }
+        context.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
+        context.fill(CGRect(x: seed % max(spec.width - 8, 1), y: 0, width: 8, height: 8))
+        guard let image = context.makeImage() else { throw FixtureError.context }
+        return image
+    }
+}
+
+enum FixtureError: Error {
+    case unsupported(ImageFormat)
+    case encodeFailed(ImageFormat)
+    case colorSpace
+    case context
+}

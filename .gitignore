@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+
+# SwiftPM
+.build/
+.swiftpm/
+Package.resolved.orig
+
+# Xcode
+xcuserdata/
+DerivedData/
+*.xcuserstate
+*.xcscmblueprint
+
+# Build products and local artifacts
+/build/
+*.dmg
+*.xcarchive
+
+# Editors
+.vscode/
+.idea/
