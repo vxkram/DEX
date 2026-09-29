@@ -38,6 +38,44 @@ targets:
         NSHumanReadableCopyright: "DEX"
         # Lets Finder's "Open With" and Dock-icon drops hand images to the
         # app without making it the default viewer.
+        # Finder right-click → Services → DEX ▸ … (handled by FinderServices).
+        # An NSRequiredContext makes each service enabled by default.
+        NSServices:
+          - NSMenuItem: {default: "DEX/Convert to JPEG"}
+            NSMessage: convertImages
+            NSUserData: jpeg
+            NSPortName: DEX
+            NSSendFileTypes: [public.image]
+            NSRequiredContext: {}
+          - NSMenuItem: {default: "DEX/Convert to PNG"}
+            NSMessage: convertImages
+            NSUserData: png
+            NSPortName: DEX
+            NSSendFileTypes: [public.image]
+            NSRequiredContext: {}
+          - NSMenuItem: {default: "DEX/Convert to HEIC"}
+            NSMessage: convertImages
+            NSUserData: heic
+            NSPortName: DEX
+            NSSendFileTypes: [public.image]
+            NSRequiredContext: {}
+          - NSMenuItem: {default: "DEX/Convert to WebP"}
+            NSMessage: convertImages
+            NSUserData: webp
+            NSPortName: DEX
+            NSSendFileTypes: [public.image]
+            NSRequiredContext: {}
+          - NSMenuItem: {default: "DEX/Combine into PDF"}
+            NSMessage: convertImages
+            NSUserData: pdf
+            NSPortName: DEX
+            NSSendFileTypes: [public.image]
+            NSRequiredContext: {}
+          - NSMenuItem: {default: "DEX/Open in DEX"}
+            NSMessage: openImages
+            NSPortName: DEX
+            NSSendFileTypes: [public.image, com.adobe.pdf]
+            NSRequiredContext: {}
         CFBundleDocumentTypes:
           - CFBundleTypeName: Image
             CFBundleTypeRole: Viewer

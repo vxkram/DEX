@@ -37,6 +37,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var document: ImageDocument?
     private var batch: [URL] = []
     private var batchTask: Task<Void, Never>?
+    private lazy var services = FinderServices { [weak self] in self?.document }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.servicesProvider = services
+        NSUpdateDynamicServices()
+    }
 
     func attach(_ document: ImageDocument) {
         self.document = document
