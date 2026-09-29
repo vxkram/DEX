@@ -20,3 +20,8 @@ Date: 2026-09-29 · Status: accepted
 ## Consequences
 - The UI isn't portable. For portability, `MediaModel` stays Foundation-only; a future Windows/Linux port reuses the model and tests and replaces the engines and UI.
 - **Verified 2026-09-29 on macOS 27.0 (`dex formats`):** ImageIO writes JPEG, PNG, HEIC, AVIF, TIFF and GIF. It does not write WebP or `public.heif`. CI on macOS 26.6.2 (Xcode 26.6) reports the same, so AVIF encoding is native on the whole supported range and libavif is not needed.
+
+## Measured (2026-09-29, M4 Pro, macOS 27)
+
+- **Release app: 1.8 MB.** The binary is 1.5 MB with symbols stripped (3.4 MB unstripped) and includes libwebp and libjpeg-turbo. The texture is 364 KB.
+- **Memory (resident):** about 111 MB with an empty window, about 131 MB with a 12 MP HDR photo open (preview plus size estimate). Most of that is SwiftUI/AppKit and Liquid Glass. Image work is bounded because previews are down-sampled and full-resolution decodes happen only while exporting or using the loupe.

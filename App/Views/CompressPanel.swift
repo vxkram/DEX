@@ -26,6 +26,7 @@ struct CompressPanel: View {
     var body: some View {
         ToolPanelBody(document: document) {
             SizeComparison(document: document)
+            SizeIncreaseNote(document: document)
 
             VStack(spacing: 10) {
                 PanelSectionHeader("Method")
@@ -142,7 +143,7 @@ private struct CompressionQuality: View {
                     .foregroundStyle(.secondary)
             }
             Slider(value: value, in: 0.3...0.94) {
-                Text("Quality")
+                EmptyView()
             } minimumValueLabel: {
                 Text("Smaller").font(.caption2)
             } maximumValueLabel: {

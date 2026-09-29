@@ -16,6 +16,8 @@ struct ResultSection: View {
                         .font(.technical)
                         .help("Change the format in Convert (⌘1).")
                     EstimateLine(document: document)
+                    // Compress shows this at the top of its panel instead.
+                    if document.tool != .compress { SizeIncreaseNote(document: document) }
                     PlanSummary(plan: plan, document: document)
                 case .failure(let error):
                     Label(String(describing: error), systemImage: "xmark.octagon")
@@ -236,5 +238,75 @@ struct Explanation: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// When the result is bigger than the original, says why in plain words
+/// and offers the one-click way back, if there is one.
+struct SizeIncreaseNote: View {
+    let document: ImageDocument
+
+    var body: some View {
+        if let reason = SizeIncreaseReason(document: document) {
+            VStack(alignment: .leading, spacing: 8) {
+                Label(reason.explanation, systemImage: "arrow.up.right.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let fix = reason.fix {
+                    Button(fix.title) { fix.apply(document) }
+                        .buttonStyle(.link)
+                        .tint(Theme.ember)
+                        .font(.caption.weight(.semibold))
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.orange.opacity(0.1)))
+        }
+    }
+}
+
+@MainActor
+struct SizeIncreaseReason {
+    struct Fix {
+        let title: String
+        let apply: @MainActor (ImageDocument) -> Void
+    }
+
+    let explanation: String
+    let fix: Fix?
+
+    init?(document: ImageDocument) {
+        guard let info = document.info, let source = info.format, let plan = document.plan,
+              let bytes = document.currentEstimate?.bytes, bytes > info.fileSize + info.fileSize / 50  // > 2 % larger
+        else { return nil }
+        let target = plan.request.target
+        let percent = Int((Double(bytes - info.fileSize) / Double(info.fileSize) * 100).rounded())
+        let keepFormat: ImageFormat? = document.writableFormats.contains(source) ? source : (source == .heif ? .heic : nil)
+        let keep = keepFormat.flatMap { format in
+            format == target ? nil : Fix(title: "Keep it as \(format.displayName)") { $0.target = format }
+        }
+        let efficient: Set<ImageFormat> = [.heic, .heif, .avif, .webp]
+
+        if plan.request.composition.map({ !$0.isEmpty }) ?? false {
+            explanation = "\(percent)% larger because several images are combined into one."
+            fix = nil
+        } else if target != source && target.supportsLossless && plan.lossyQuality == nil {
+            explanation = "\(percent)% larger: \(target.displayName) stores every pixel exactly (lossless), which takes far more space than \(source.displayName)'s compression. Nothing is gained in quality over the original."
+            fix = keep
+        } else if target != source && efficient.contains(source) && !efficient.contains(target) {
+            explanation = "\(percent)% larger: \(source.displayName) is a newer format that compresses about twice as well as \(target.displayName), so the same picture needs more bytes."
+            fix = keep
+        } else if target != source {
+            explanation = "\(percent)% larger: \(target.displayName) is less efficient than \(source.displayName) for this image."
+            fix = keep
+        } else if let quality = plan.lossyQuality {
+            explanation = "\(percent)% larger: the original was saved at a lower quality than \(Int(quality * 100)). Re-encoding can't restore detail, so lower the quality to get a smaller file."
+            fix = nil
+        } else {
+            explanation = "\(percent)% larger than the original after re-encoding."
+            fix = nil
+        }
     }
 }
