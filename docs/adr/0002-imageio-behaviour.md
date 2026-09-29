@@ -84,3 +84,10 @@ Every plan that promises HDR is verified after writing: an output missing its ga
 | → AVIF | 2.2 s, 1.8 GB | unchanged | The memory is inside ImageIO's AVIF encoder |
 
 **App footprint** (as Activity Monitor reports it): about 100 MB with a 48–100 MP photo open. Crop's pixel loupe decodes full resolution (capped at 50 MP; above that an 8K decode) and is released when leaving Crop. The allocator keeps that memory for reuse, which shows as about 500 MB until the system reclaims it; reopening Crop doesn't grow it (checked with `malloc_history`: no live block).
+
+## PDF editing (added 2026-09-29)
+
+- **Editing is built on PDFKit** (`PDFEditor`), so text and vector content stay as they are and nothing is rasterised.
+- **Rotation** changes only the page's /Rotate entry.
+- **Text** is added as a FreeText annotation, so it stays selectable and editable in other apps.
+- **Compression:** PDFKit's `saveImagesAsJPEGOption` and `optimizeImagesForScreenOption` had no effect on macOS 27. A Quartz filter built from the same settings as Preview's "Reduce File Size" works. Balanced is JPEG 0.8 at ≤200 DPI / 3000 px; Smallest is JPEG 0.6 at ≤144 DPI / 2000 px. A 3-page 2.9 MB test PDF went to 426 KB and 247 KB respectively, with text kept.
