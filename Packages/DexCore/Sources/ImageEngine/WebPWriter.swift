@@ -40,6 +40,16 @@ enum WebPWriter {
         try output.write(to: url)
     }
 
+    /// Encodes an already-rendered image (e.g. a PDF page), no metadata.
+    static func write(_ image: CGImage, lossyQuality: Double?, to url: URL, token: CancellationToken) throws {
+        let colorSpace = rgbColorSpace(of: image)
+        let pixels = try rgbaPixels(image, in: colorSpace)
+        defer { pixels.free() }
+        let bitstream = try encode(pixels, lossyQuality: lossyQuality, token: token, progress: nil)
+        let icc = embeddedProfile(colorSpace)
+        try (icc == nil ? bitstream : try mux(bitstream, icc: icc, xmp: nil)).write(to: url)
+    }
+
     // MARK: - Pixels
 
     /// WebP stores RGB only. Grayscale and CMYK are converted to sRGB (the
