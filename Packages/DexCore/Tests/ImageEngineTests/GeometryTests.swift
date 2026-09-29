@@ -41,9 +41,9 @@ struct GeometryTests {
 
     // MARK: JPEG lossless crop
 
-    @Test func jpegBlockSizeIsReported() throws {
+    @Test func jpegBlockSizeIsReported() async throws {
         defer { fixtures.cleanUp() }
-        let info = try ImageEngine.inspect(url: try fixtures.image(.jpeg))
+        let info = try ImageEngine.inspect(url: try await fixtures.image(.jpeg))
         let block = try #require(info.jpegBlockSize)
         #expect([8, 16].contains(block.width) && [8, 16].contains(block.height))
     }
@@ -55,7 +55,7 @@ struct GeometryTests {
         spec.height = 192
         spec.noise = true
         spec.gps = true
-        let source = try fixtures.image(.jpeg, named: "photo.jpg", spec)
+        let source = try await fixtures.image(.jpeg, named: "photo.jpg", spec)
         let crop = PixelRect(x: 32, y: 48, width: 160, height: 96)
 
         let (output, plan) = try await run(source, .jpeg, Geometry(crop: crop))
@@ -77,7 +77,7 @@ struct GeometryTests {
         spec.height = 128
         spec.noise = true
         spec.orientation = 6
-        let source = try fixtures.image(.jpeg, named: "rotated.jpg", spec)
+        let source = try await fixtures.image(.jpeg, named: "rotated.jpg", spec)
         // Displayed 128×256; crop the lower-left block region.
         let crop = PixelRect(x: 0, y: 128, width: 64, height: 128)
         let (output, plan) = try await run(source, .jpeg, Geometry(crop: crop))
@@ -97,7 +97,7 @@ struct GeometryTests {
         var spec = FixtureFactory.Spec()
         spec.alpha = true
         spec.noise = true
-        let source = try fixtures.image(.png, spec)
+        let source = try await fixtures.image(.png, spec)
         var geometry = Geometry()
         geometry.rotateClockwise()
         geometry.crop = PixelRect(x: 5, y: 9, width: 30, height: 40)
@@ -113,7 +113,7 @@ struct GeometryTests {
     @Test("Rotation works for every format", arguments: [ImageFormat.jpeg, .png, .heic, .avif, .webp, .tiff, .gif])
     func rotatesEveryFormat(_ format: ImageFormat) async throws {
         defer { fixtures.cleanUp() }
-        let source = format == .webp ? try fixtures.image(.png, named: "src.png") : try fixtures.image(format)
+        let source = format == .webp ? try await fixtures.image(.png, named: "src.png") : try await fixtures.image(format)
         var geometry = Geometry()
         geometry.rotateCounterclockwise()
         let (output, _) = try await run(source, format, geometry)
@@ -128,7 +128,7 @@ struct GeometryTests {
         spec.height = 300
         spec.bitsPerComponent = 16
         spec.colorSpace = CGColorSpace.displayP3
-        let source = try fixtures.image(.png, spec)
+        let source = try await fixtures.image(.png, spec)
         let (output, plan) = try await run(source, .png, Geometry(resize: PixelSize(width: 200, height: 150)))
         #expect(plan.verdict == .lossy)
         let info = try ImageEngine.inspect(url: output)
@@ -141,7 +141,7 @@ struct GeometryTests {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.frames = 4
-        let source = try fixtures.image(.gif, spec)
+        let source = try await fixtures.image(.gif, spec)
         let (output, _) = try await run(source, .gif, Geometry(crop: PixelRect(x: 4, y: 4, width: 20, height: 20)))
         let info = try ImageEngine.inspect(url: output)
         #expect(info.frameCount == 4)
@@ -150,7 +150,7 @@ struct GeometryTests {
 
     @Test func hdrFollowsCropAndResize() async throws {
         defer { fixtures.cleanUp() }
-        let source = try fixtures.hdrImage(.heic, width: 128, height: 96)
+        let source = try await fixtures.hdrImage(.heic, width: 128, height: 96)
         let geometry = Geometry(crop: PixelRect(x: 64, y: 0, width: 64, height: 96), resize: PixelSize(width: 32, height: 48))
         let (output, plan) = try await run(source, .heic, geometry)
         #expect(plan.preservesHDR)

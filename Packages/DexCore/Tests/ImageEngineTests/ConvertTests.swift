@@ -34,7 +34,7 @@ struct ConvertTests {
     @Test("Every native source × target converts with geometry intact", arguments: nativeFormats)
     func matrix(_ sourceFormat: ImageFormat) async throws {
         defer { fixtures.cleanUp() }
-        let source = try fixtures.image(sourceFormat, named: "source.\(sourceFormat.preferredFileExtension)")
+        let source = try await fixtures.image(sourceFormat, named: "source.\(sourceFormat.preferredFileExtension)")
         let before = try Data(contentsOf: source)
 
         for target in Self.allTargets {
@@ -51,7 +51,7 @@ struct ConvertTests {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.gps = true
-        let source = try fixtures.image(.jpeg, named: "gps.jpg", spec)
+        let source = try await fixtures.image(.jpeg, named: "gps.jpg", spec)
         #expect(try ImageEngine.inspect(url: source).hasGPS)
 
         let (output, _) = try await run(source, to: target)
@@ -64,7 +64,7 @@ struct ConvertTests {
         var spec = FixtureFactory.Spec()
         spec.gps = true
         spec.orientation = 6
-        let source = try fixtures.image(format, named: "gps.\(format.preferredFileExtension)", spec)
+        let source = try await fixtures.image(format, named: "gps.\(format.preferredFileExtension)", spec)
 
         let (output, plan) = try await run(source, to: format)
         #expect(plan.strategy == (format.supportsLosslessMetadataEdit ? .rewriteMetadata : .reencode))
@@ -81,7 +81,7 @@ struct ConvertTests {
         var spec = FixtureFactory.Spec()
         spec.gps = true
         spec.orientation = 8
-        let source = try fixtures.image(format, named: "o8.\(format.preferredFileExtension)", spec)
+        let source = try await fixtures.image(format, named: "o8.\(format.preferredFileExtension)", spec)
 
         let (output, _) = try await run(source, to: format, metadata: .removeAll)
         let info = try ImageEngine.inspect(url: output)
@@ -94,7 +94,7 @@ struct ConvertTests {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.orientation = orientation
-        let source = try fixtures.image(.png, spec)
+        let source = try await fixtures.image(.png, spec)
         let sourceInfo = try ImageEngine.inspect(url: source)
 
         let (output, _) = try await run(source, to: .avif)
@@ -112,7 +112,7 @@ struct ConvertTests {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.frames = 3
-        let source = try fixtures.image(.gif, spec)
+        let source = try await fixtures.image(.gif, spec)
         let (output, plan) = try await run(source, to: .gif, metadata: .removeAll)
         #expect(plan.strategy == .reencode)
         #expect(plan.verdict == .lossless)
@@ -123,7 +123,7 @@ struct ConvertTests {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.gps = true
-        let source = try fixtures.image(.jpeg, named: "gps.jpg", spec)
+        let source = try await fixtures.image(.jpeg, named: "gps.jpg", spec)
         let (output, plan) = try await run(source, to: .jpeg, metadata: .keepAll)
         #expect(plan.strategy == .copyFile)
         #expect(try Data(contentsOf: output) == Data(contentsOf: source))
@@ -131,7 +131,7 @@ struct ConvertTests {
 
     @Test func jpegToPNGIsPixelExact() async throws {
         defer { fixtures.cleanUp() }
-        let source = try fixtures.image(.jpeg)
+        let source = try await fixtures.image(.jpeg)
         let (output, plan) = try await run(source, to: .png)
         #expect(plan.verdict == .lossless)
         #expect(try pixels(of: output) == pixels(of: source))
@@ -143,7 +143,7 @@ struct ConvertTests {
         spec.bitsPerComponent = 16
         spec.colorSpace = CGColorSpace.displayP3
         spec.alpha = true
-        let source = try fixtures.image(.png, spec)
+        let source = try await fixtures.image(.png, spec)
 
         let (output, plan) = try await run(source, to: .tiff)
         #expect(plan.verdict == .lossless)
@@ -158,7 +158,7 @@ struct ConvertTests {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.bitsPerComponent = 16
-        let source = try fixtures.image(.png, spec)
+        let source = try await fixtures.image(.png, spec)
         for target in [ImageFormat.heic, .avif, .jpeg] {
             let (output, plan) = try await run(source, to: target)
             let expected = plan.notes.compactMap { note -> Int? in
@@ -172,7 +172,7 @@ struct ConvertTests {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.alpha = true
-        let source = try fixtures.image(.png, spec)
+        let source = try await fixtures.image(.png, spec)
         let (output, plan) = try await run(source, to: .jpeg)
         #expect(plan.notes.contains(.transparencyFlattened))
         // The fixture is 50 % transparent, so every channel ends up at least half white.
@@ -185,7 +185,7 @@ struct ConvertTests {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.frames = 5
-        let source = try fixtures.image(.gif, spec)
+        let source = try await fixtures.image(.gif, spec)
 
         let (gif, _) = try await run(source, to: .gif, metadata: .removeAll)
         #expect(try ImageEngine.inspect(url: gif).frameCount == 5)
@@ -197,7 +197,7 @@ struct ConvertTests {
 
     @Test func refusesToOverwriteSource() async throws {
         defer { fixtures.cleanUp() }
-        let source = try fixtures.image(.png)
+        let source = try await fixtures.image(.png)
         let before = try Data(contentsOf: source)
         let (_, plan) = try ImageEngine.plan(source, ConvertRequest(target: .png, metadata: .removeAll))
         await #expect(throws: OutputError.self) {
@@ -208,7 +208,7 @@ struct ConvertTests {
 
     @Test func cancellationLeavesNoOutput() async throws {
         defer { fixtures.cleanUp() }
-        let source = try fixtures.image(.png)
+        let source = try await fixtures.image(.png)
         let destination = fixtures.directory.appendingPathComponent("cancelled.jpg")
         let (_, plan) = try ImageEngine.plan(source, ConvertRequest(target: .jpeg))
 

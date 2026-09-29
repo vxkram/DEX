@@ -18,7 +18,7 @@ struct HDRTests {
     @Test("Gain map survives conversion to formats that can store one", arguments: [ImageFormat.jpeg, .heic, .avif])
     func keepsGainMap(_ target: ImageFormat) async throws {
         defer { fixtures.cleanUp() }
-        let source = try fixtures.hdrImage(.heic)
+        let source = try await fixtures.hdrImage(.heic)
         let sourceHeadroom = try headroom(of: source)
         #expect(sourceHeadroom > 1.5, "fixture must really be HDR")
 
@@ -35,7 +35,7 @@ struct HDRTests {
     @Test("HDR drop is disclosed for formats without gain maps", arguments: [ImageFormat.png, .tiff])
     func disclosesDrop(_ target: ImageFormat) async throws {
         defer { fixtures.cleanUp() }
-        let source = try fixtures.hdrImage(.heic)
+        let source = try await fixtures.hdrImage(.heic)
         let (_, plan) = try ImageEngine.plan(source, ConvertRequest(target: target))
         #expect(plan.verdict == .lossy)
         #expect(plan.notes.contains(.hdrDropped(to: target)))
@@ -45,13 +45,13 @@ struct HDRTests {
     // MARK: - Gain map rotation
 
     @Test("Bitmap orientation matches ImageIO's own transform", arguments: 1...8)
-    func orientationMatchesImageIO(_ orientation: Int) throws {
+    func orientationMatchesImageIO(_ orientation: Int) async throws {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.orientation = orientation
         spec.width = 7
         spec.height = 5
-        let url = try fixtures.image(.png, spec)
+        let url = try await fixtures.image(.png, spec)
         let source = try #require(CGImageSourceCreateWithURL(url as CFURL, nil))
 
         let stored = try rgba(try #require(CGImageSourceCreateImageAtIndex(source, 0, nil)))

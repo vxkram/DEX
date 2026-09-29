@@ -1,11 +1,12 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import JobSystem
 import MediaModel
 
 /// Generates deterministic test images with ImageIO so no binary fixtures
 /// need to live in the repository.
-struct FixtureFactory {
+struct FixtureFactory: Sendable {
     let directory: URL
 
     init() throws {
@@ -18,7 +19,7 @@ struct FixtureFactory {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    struct Spec {
+    struct Spec: @unchecked Sendable {
         var width = 64
         var height = 48
         var alpha = false
@@ -31,7 +32,17 @@ struct FixtureFactory {
         var noise = false
     }
 
-    func image(_ format: ImageFormat, named name: String? = nil, _ spec: Spec = Spec()) throws -> URL {
+    /// Encodes on MediaWork's queue: ImageIO's HEIF/AVIF encoder deadlocks
+    /// when the Swift cooperative pool is saturated (3-core CI runners).
+    func image(_ format: ImageFormat, named name: String? = nil, _ spec: Spec = Spec()) async throws -> URL {
+        try await MediaWork.run { _ in try self.encodeImage(format, named: name, spec) }
+    }
+
+    func hdrImage(_ format: ImageFormat, width: Int = 64, height: Int = 48) async throws -> URL {
+        try await MediaWork.run { _ in try self.encodeHDRImage(format, width: width, height: height) }
+    }
+
+    private func encodeImage(_ format: ImageFormat, named name: String?, _ spec: Spec) throws -> URL {
         let url = directory.appendingPathComponent(name ?? "fixture.\(format.preferredFileExtension)")
         guard let destination = CGImageDestinationCreateWithURL(
             url as CFURL, format.typeIdentifier as CFString, spec.frames, nil
@@ -62,7 +73,7 @@ struct FixtureFactory {
 
     /// An HDR image with an ISO gain map, encoded by ImageIO from a
     /// float image whose highlights reach 4× SDR white.
-    func hdrImage(_ format: ImageFormat, width: Int = 64, height: Int = 48) throws -> URL {
+    private func encodeHDRImage(_ format: ImageFormat, width: Int, height: Int) throws -> URL {
         guard let space = CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3),
               let context = CGContext(
                 data: nil, width: width, height: height, bitsPerComponent: 16, bytesPerRow: 0, space: space,

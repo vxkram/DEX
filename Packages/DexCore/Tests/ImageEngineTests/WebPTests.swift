@@ -31,7 +31,7 @@ struct WebPTests {
         spec.alpha = true
         spec.colorSpace = CGColorSpace.displayP3
         spec.bitsPerComponent = bits
-        let source = try fixtures.image(.png, spec)
+        let source = try await fixtures.image(.png, spec)
 
         let (output, plan) = try await convert(source)
         #expect(plan.lossyQuality == nil)
@@ -53,7 +53,7 @@ struct WebPTests {
         spec.width = 256
         spec.height = 192
         spec.noise = true
-        let source = try fixtures.image(.png, spec)
+        let source = try await fixtures.image(.png, spec)
         let (lossless, _) = try await convert(source)
         let (lossy, plan) = try await convert(source, quality: .custom(0.6))
         #expect(plan.verdict == .lossy)
@@ -66,7 +66,7 @@ struct WebPTests {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.orientation = orientation
-        let source = try fixtures.image(.png, spec)
+        let source = try await fixtures.image(.png, spec)
         let sourceInfo = try ImageEngine.inspect(url: source)
 
         let (output, plan) = try await convert(source)
@@ -82,7 +82,7 @@ struct WebPTests {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.gps = true
-        let source = try fixtures.image(.jpeg, named: "gps.jpg", spec)
+        let source = try await fixtures.image(.jpeg, named: "gps.jpg", spec)
 
         let (kept, _) = try await convert(source, metadata: .keepAll)
         #expect(try ImageEngine.inspect(url: kept).hasGPS, "keep-all must really carry metadata")
@@ -96,7 +96,7 @@ struct WebPTests {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.colorSpace = CGColorSpace.linearGray
-        let source = try fixtures.image(.png, spec)
+        let source = try await fixtures.image(.png, spec)
         let (output, plan) = try await convert(source)
         #expect(plan.notes.contains(.colourModelConverted(from: "Gray")))
         #expect(try ImageEngine.inspect(url: output).colorModel == "RGB")
@@ -104,7 +104,7 @@ struct WebPTests {
 
     @Test func cancellationLeavesNoOutput() async throws {
         defer { fixtures.cleanUp() }
-        let source = try fixtures.image(.png)
+        let source = try await fixtures.image(.png)
         let (_, plan) = try ImageEngine.plan(source, ConvertRequest(target: .webp))
         let destination = fixtures.directory.appendingPathComponent("cancelled.webp")
         let task = Task {

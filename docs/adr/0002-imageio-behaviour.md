@@ -12,7 +12,7 @@ These results come from probes and are locked in by tests in `ImageEngineTests`.
 | The **AVIF encoder drops the orientation tag** | Rotated photos (e.g. from iPhones) come out sideways | Converting a rotated image to AVIF applies the rotation to the pixels (`appliesOrientation`, exact transform) |
 | Output bit depth: HEIC/AVIF 10-bit, JPEG 8-bit, PNG 16-bit, TIFF up to 32 | Depth loss must be disclosed | Stored in `ImageFormat.maxBitsPerComponent`; a test compares it with the real encoder output |
 | Transparency encoded to JPEG is composited onto white | Matches what users expect | Disclosed as `transparencyFlattened`; tested |
-| **HEIF/AVIF encoding blocks on internal work and deadlocks** when every Swift cooperative-pool thread is inside an encoder | The app and tests hang under parallel load | All blocking media work runs on `MediaWork`'s dispatch queue, never directly on the cooperative pool. Cancellation is bridged with `CancellationToken` |
+| **HEIF/AVIF encoding blocks on internal work and deadlocks** when every Swift cooperative-pool thread is inside an encoder | The app and tests hang under parallel load | All blocking media work runs on `MediaWork`'s dispatch queue, never directly on the cooperative pool. Cancellation is bridged with `CancellationToken`. **Test fixtures too:** a 3-core CI runner hung for 18 minutes when fixtures encoded HEIC/AVIF inline, so `FixtureFactory` is async on `MediaWork` |
 | ImageIO writes AVIF on macOS 26.6 and 27.0, but not WebP or `public.heif` | libavif isn't needed; libwebp is | The runtime `writableFormats()` check stays in place |
 
 ## HDR gain maps (added 2026-09-29)

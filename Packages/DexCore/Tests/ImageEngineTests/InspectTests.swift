@@ -13,10 +13,10 @@ struct InspectTests {
     }
 
     @Test("Reads every natively writable MVP format", arguments: [ImageFormat.jpeg, .png, .heic, .tiff, .gif, .avif])
-    func readsFormat(_ format: ImageFormat) throws {
+    func readsFormat(_ format: ImageFormat) async throws {
         defer { fixtures.cleanUp() }
         try #require(ImageEngine.canWriteNatively(format), "\(format) is not writable on this macOS")
-        let url = try fixtures.image(format)
+        let url = try await fixtures.image(format)
 
         let info = try ImageEngine.inspect(url: url)
 
@@ -28,7 +28,7 @@ struct InspectTests {
         #expect(info.fileName == url.lastPathComponent)
     }
 
-    @Test func readsWebP() throws {
+    @Test func readsWebP() async throws {
         defer { fixtures.cleanUp() }
         let info = try ImageEngine.inspect(url: try fixtures.webp())
         #expect(info.format == .webp)
@@ -37,11 +37,11 @@ struct InspectTests {
     }
 
     @Test("EXIF orientation swaps display axes for 5–8", arguments: 1...8)
-    func orientation(_ orientation: Int) throws {
+    func orientation(_ orientation: Int) async throws {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.orientation = orientation
-        let info = try ImageEngine.inspect(url: try fixtures.image(.jpeg, spec))
+        let info = try ImageEngine.inspect(url: try await fixtures.image(.jpeg, spec))
 
         #expect(info.orientation == orientation)
         #expect(info.pixelWidth == 64)
@@ -51,46 +51,46 @@ struct InspectTests {
         #expect(info.displayHeight == (rotated ? 64 : 48))
     }
 
-    @Test func detectsGPS() throws {
+    @Test func detectsGPS() async throws {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.gps = true
-        #expect(try ImageEngine.inspect(url: try fixtures.image(.jpeg, named: "gps.jpg", spec)).hasGPS)
-        #expect(try !ImageEngine.inspect(url: try fixtures.image(.jpeg, named: "plain.jpg")).hasGPS)
+        #expect(try ImageEngine.inspect(url: try await fixtures.image(.jpeg, named: "gps.jpg", spec)).hasGPS)
+        #expect(try !ImageEngine.inspect(url: try await fixtures.image(.jpeg, named: "plain.jpg")).hasGPS)
     }
 
-    @Test func detectsAlpha() throws {
+    @Test func detectsAlpha() async throws {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.alpha = true
-        #expect(try ImageEngine.inspect(url: try fixtures.image(.png, named: "alpha.png", spec)).hasAlpha)
-        #expect(try !ImageEngine.inspect(url: try fixtures.image(.jpeg, named: "opaque.jpg")).hasAlpha)
+        #expect(try ImageEngine.inspect(url: try await fixtures.image(.png, named: "alpha.png", spec)).hasAlpha)
+        #expect(try !ImageEngine.inspect(url: try await fixtures.image(.jpeg, named: "opaque.jpg")).hasAlpha)
     }
 
-    @Test func reportsSixteenBitDepthAndWideColour() throws {
+    @Test func reportsSixteenBitDepthAndWideColour() async throws {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.bitsPerComponent = 16
         spec.colorSpace = CGColorSpace.displayP3
-        let info = try ImageEngine.inspect(url: try fixtures.image(.png, spec))
+        let info = try ImageEngine.inspect(url: try await fixtures.image(.png, spec))
 
         #expect(info.bitsPerComponent == 16)
         #expect(info.colorModel == "RGB")
         #expect(info.colorProfile?.contains("P3") == true)
     }
 
-    @Test func countsAnimatedGIFFrames() throws {
+    @Test func countsAnimatedGIFFrames() async throws {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.frames = 5
-        let info = try ImageEngine.inspect(url: try fixtures.image(.gif, spec))
+        let info = try ImageEngine.inspect(url: try await fixtures.image(.gif, spec))
         #expect(info.frameCount == 5)
         #expect(info.isAnimated)
     }
 
-    @Test func plainImageHasNoGainMap() throws {
+    @Test func plainImageHasNoGainMap() async throws {
         defer { fixtures.cleanUp() }
-        #expect(try !ImageEngine.inspect(url: try fixtures.image(.heic)).hasHDRGainMap)
+        #expect(try !ImageEngine.inspect(url: try await fixtures.image(.heic)).hasHDRGainMap)
     }
 
     // MARK: - Hostile and broken input
@@ -108,39 +108,39 @@ struct InspectTests {
         }
     }
 
-    @Test func rejectsEmptyFile() throws {
+    @Test func rejectsEmptyFile() async throws {
         defer { fixtures.cleanUp() }
         let url = try fixtures.file(named: "empty.jpg", contents: Data())
         #expect(throws: InspectError.emptyFile("empty.jpg")) { try ImageEngine.inspect(url: url) }
     }
 
-    @Test func rejectsTextWithImageExtension() throws {
+    @Test func rejectsTextWithImageExtension() async throws {
         defer { fixtures.cleanUp() }
         let url = try fixtures.file(named: "notes.jpg", contents: Data("definitely not a jpeg".utf8))
         #expect(throws: InspectError.self) { try ImageEngine.inspect(url: url) }
     }
 
     @Test("Truncated files fail cleanly instead of crashing", arguments: [ImageFormat.jpeg, .png, .heic])
-    func rejectsTruncated(_ format: ImageFormat) throws {
+    func rejectsTruncated(_ format: ImageFormat) async throws {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
         spec.width = 256
         spec.height = 256
-        let original = try Data(contentsOf: try fixtures.image(format, spec))
+        let original = try Data(contentsOf: try await fixtures.image(format, spec))
         let url = try fixtures.file(named: "truncated.\(format.preferredFileExtension)", contents: original.prefix(64))
         #expect(throws: InspectError.self) { try ImageEngine.inspect(url: url) }
     }
 
-    @Test func handlesUnicodeAndSpacesInPath() throws {
+    @Test func handlesUnicodeAndSpacesInPath() async throws {
         defer { fixtures.cleanUp() }
         let name = "Photo 📷 déjà vu.png"
-        let info = try ImageEngine.inspect(url: try fixtures.image(.png, named: name))
+        let info = try ImageEngine.inspect(url: try await fixtures.image(.png, named: name))
         #expect(info.fileName == name)
     }
 
-    @Test func inspectDoesNotModifySource() throws {
+    @Test func inspectDoesNotModifySource() async throws {
         defer { fixtures.cleanUp() }
-        let url = try fixtures.image(.jpeg)
+        let url = try await fixtures.image(.jpeg)
         let before = try Data(contentsOf: url)
         _ = try ImageEngine.inspect(url: url)
         #expect(try Data(contentsOf: url) == before)
