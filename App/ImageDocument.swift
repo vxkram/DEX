@@ -46,9 +46,12 @@ final class ImageDocument {
     var rasterQuality: Double = 0.9
     var pdfPageSize: PDFEngine.PageSize = .fitImage
     var pdfMargin: Double = 36
-    /// nil = non-JPEG pages lossless; a value = stored as JPEG at it.
+    /// nil = best (JPEG pages untouched); a value = every page JPEG at it.
     var pdfImageQuality: Double?
     private(set) var pdfEstimate: (key: PDFEstimateKey, bytes: Int64?)?
+    /// The pages of the PDF that would be saved, rendered small.
+    private(set) var pdfPreviewPages: [PDFEngine.CGImageBox] = []
+    @ObservationIgnored private var pdfPreviewFolder: URL?
     /// Extra pages after the opened image for Images → PDF.
     var pdfImages: [ComposedImage] = []
 
@@ -302,6 +305,8 @@ final class ImageDocument {
         needsPDFPassword = false
         pageThumbnails = [:]
         selectedPages = []
+        pdfPreviewPages = []
+        pdfEstimate = nil
         isLoading = true
 
         if PDFEngine.isPDF(url) {
@@ -508,13 +513,24 @@ final class ImageDocument {
             if key.request != nil, let plan { first.rendered = try await PDFEngine.renderedPage(sourceURL, plan: plan) }
             let folder = FileManager.default.temporaryDirectory.appendingPathComponent("dex-pdf-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            defer { try? FileManager.default.removeItem(at: folder) }
-            let output = folder.appendingPathComponent("estimate.pdf")
+            let output = folder.appendingPathComponent("preview.pdf")
             try await PDFEngine.makePDF(from: [first] + key.pages.map { PDFEngine.PageImage(url: $0) },
-                                        pageSize: key.pageSize, margin: key.margin, title: "estimate",
+                                        pageSize: key.pageSize, margin: key.margin, title: "preview",
                                         imageQuality: key.quality, to: output)
+            guard pdfEstimateKey == key else { try? FileManager.default.removeItem(at: folder); return }
             let bytes = Int64(try output.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
-            if pdfEstimateKey == key { pdfEstimate = (key, bytes) }
+            pdfEstimate = (key, bytes)
+            // The same PDF becomes the preview: exactly what will be saved.
+            let pages = try await Task.detached { () -> [PDFEngine.CGImageBox] in
+                let info = try PDFEngine.info(url: output)
+                return try (1...info.pageCount).map { page in
+                    let size = info.pageSizes[page - 1]
+                    return PDFEngine.CGImageBox(try PDFEngine.renderPage(url: output, page: page, dpi: 72 * 900 / max(size.width, size.height, 1)))
+                }
+            }.value
+            if let old = pdfPreviewFolder { try? FileManager.default.removeItem(at: old) }
+            pdfPreviewFolder = folder
+            if pdfEstimateKey == key { pdfPreviewPages = pages }
         } catch {}
     }
 

@@ -113,21 +113,31 @@ private struct ImagesToPDF: View {
                     .frame(maxWidth: .infinity, minHeight: 32)
             }
             .buttonStyle(.glass)
-            Explanation("One image per page, any format. JPEGs go in untouched (no re-encoding); location data is removed.")
+            Explanation("One image per page, any format. Location data is removed.")
         }
 
         VStack(alignment: .leading, spacing: 8) {
-            PanelSectionHeader("Non-JPEG pages")
-            HStack(spacing: 6) {
-                TwoLineChip(title: "Lossless", subtitle: "exact, larger", isSelected: document.pdfImageQuality == nil) {
-                    document.pdfImageQuality = nil
+            PanelSectionHeader("Quality")
+            let quality = document.pdfImageQuality ?? 1
+            HStack {
+                Slider(value: Binding(
+                    get: { quality },
+                    set: { document.pdfImageQuality = $0 >= 0.99 ? nil : ($0 * 20).rounded() / 20 }
+                ), in: 0.3...1) {
+                    EmptyView()
+                } minimumValueLabel: {
+                    Text("Smaller").font(.caption2)
+                } maximumValueLabel: {
+                    Text("Best").font(.caption2)
                 }
-                TwoLineChip(title: "Smaller", subtitle: "JPEG 90", isSelected: document.pdfImageQuality != nil) {
-                    document.pdfImageQuality = 0.9
-                }
+                .tint(Theme.ember)
             }
-            Explanation("PDFs can't hold HEIC, PNG or WebP as-is: Lossless is exact but big, Smaller uses JPEG 90.")
-            PDFSizeLine(document: document)
+            HStack {
+                PDFSizeLine(document: document)
+                Spacer()
+                Text(verbatim: document.pdfImageQuality.map { "\(Int($0 * 100))" } ?? "Best")
+                    .font(.technicalSmall).foregroundStyle(.secondary)
+            }
         }
 
         VStack(alignment: .leading, spacing: 8) {
@@ -376,5 +386,59 @@ struct PDFPasswordSheet: View {
     private func unlock() {
         guard !password.isEmpty else { return }
         document.unlockPDF(with: password)
+    }
+}
+
+/// What the PDF will look like: its real pages, rendered from the same
+/// PDF used to measure the size.
+struct PDFPagesStage: View {
+    let document: ImageDocument
+
+    var body: some View {
+        if document.pdfPreviewPages.isEmpty {
+            ProgressView().controlSize(.large)
+        } else if document.pdfPreviewPages.count <= 3 {
+            // Few pages: show them large, side by side and centred.
+            HStack(alignment: .center, spacing: 24) {
+                ForEach(Array(document.pdfPreviewPages.enumerated()), id: \.offset) { index, page in
+                    PreviewPage(page: page, number: index + 1)
+                }
+            }
+            .padding(28)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .topTrailing) { measuring }
+        } else {
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220, maximum: 420), spacing: 24)], spacing: 24) {
+                    ForEach(Array(document.pdfPreviewPages.enumerated()), id: \.offset) { index, page in
+                        PreviewPage(page: page, number: index + 1)
+                    }
+                }
+                .padding(28)
+            }
+            .overlay(alignment: .topTrailing) { measuring }
+        }
+    }
+
+    @ViewBuilder private var measuring: some View {
+        if document.pdfEstimate?.bytes == nil {
+            ProgressView().controlSize(.small).padding(12)
+        }
+    }
+}
+
+private struct PreviewPage: View {
+    let page: PDFEngine.CGImageBox
+    let number: Int
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(decorative: page.image, scale: 1)
+                .resizable()
+                .interpolation(.high)
+                .aspectRatio(contentMode: .fit)
+                .shadow(color: .black.opacity(0.45), radius: 12, y: 6)
+            Text(verbatim: "Page \(number)").font(.technicalSmall).foregroundStyle(.secondary)
+        }
     }
 }

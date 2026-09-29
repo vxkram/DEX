@@ -68,6 +68,7 @@ Every plan that promises HDR is verified after writing: an output missing its ga
 |---|---|
 | **JPEG pages are embedded as their original compressed data:** `CGImage(jpegDataProviderSource:)` → DCTDecode, after a marker-level metadata strip | No re-encode (the scan data is byte-identical inside the PDF, tested). The strip keeps EXIF/GPS out of the PDF |
 | **Orientation is applied as a page transform**, not to the pixels | Rotated iPhone JPEGs stay untouched and come out upright |
-| **Non-JPEG pages are lossless (Flate) by default**, with an optional "Smaller" mode (JPEG 90) | PDFs can't hold HEIC/WebP. A lossless 12 MP HEIC page makes about a 17 MB PDF, and the panel measures the real size live |
+| **Every page is stored as JPEG, set by one Quality slider.** At "Best", JPEG files go in untouched and other formats become JPEG 95; lower values re-encode every page | PDFs can't hold HEIC/WebP, and lossless (Flate) pages were far too big: a 12 MP HEIC made a 17.9 MB PDF, versus 2.5 MB at Best. The user asked for one simple size/quality control |
+| **The preview is the real PDF**: the one built for the size estimate is rendered page by page | What you see is exactly what gets saved (page size, margins, edits) |
 | **Pages are rendered with `CGPDFPage` on white** at 72–600 DPI | Rotation- and crop-box-aware. Output files are named `<name>-page-01.<ext>` and never overwrite existing ones |
 | **Password-protected PDFs** prompt for the password; the unlock is kept only in memory | |

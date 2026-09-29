@@ -132,6 +132,8 @@ private struct PreviewCanvas: View {
         ZStack {
             if document.isPDFDocument {
                 PageGrid(document: document)
+            } else if document.tool == .pdf {
+                PDFPagesStage(document: document)
             } else if document.preview != nil {
                 ImageStage(document: document, isCropping: isCropping)
             } else if let error = document.loadError {

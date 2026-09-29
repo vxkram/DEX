@@ -126,12 +126,12 @@ public enum PDFEngine {
         public init(_ image: CGImage) { self.image = image }
     }
 
-    /// One page per image. JPEGs are embedded as their original compressed
-    /// data (no re-encode), with metadata stripped for privacy; other
-    /// formats are stored losslessly. Rotation is applied to the page, not
-    /// the pixels, so JPEGs stay untouched even when rotated.
-    /// `imageQuality`: nil stores non-JPEG pages losslessly; a value stores
-    /// them as JPEG at that quality (much smaller PDFs for HEIC/PNG photos).
+    /// One page per image, every page stored as JPEG (PDFs can't hold HEIC,
+    /// PNG or WebP, and lossless pages are huge). Rotation is applied to
+    /// the page, not the pixels.
+    /// `imageQuality` nil = best: JPEG files go in untouched (their own
+    /// compressed data, metadata stripped for privacy) and other formats as
+    /// JPEG 95. A value re-encodes every page as JPEG at that quality.
     public static func makePDF(
         from images: [PageImage], pageSize: PageSize, margin: Double, title: String,
         imageQuality: Double? = nil,
@@ -255,8 +255,7 @@ public enum PDFEngine {
 
     private static func pageContent(_ item: PageImage, jpegQuality: Double?) throws -> PageContent {
         if let rendered = item.rendered {
-            return PageContent(image: try jpegQuality.map { try asJPEG(rendered.image, quality: $0) } ?? rendered.image,
-                               orientation: .identity)
+            return PageContent(image: try asJPEG(rendered.image, quality: jpegQuality ?? bestQuality), orientation: .identity)
         }
         guard let source = CGImageSourceCreateWithURL(item.url as CFURL, nil) else {
             throw ConvertError.unreadable(item.url.lastPathComponent)
@@ -265,7 +264,7 @@ public enum PDFEngine {
         let orientation = Orientation(exif: properties?[kCGImagePropertyOrientation] as? Int ?? 1)
         // JPEG: hand Core Graphics the compressed data so the PDF embeds it
         // as-is (DCTDecode), minus metadata so no location leaks into it.
-        if (CGImageSourceGetType(source) as String?) == ImageFormat.jpeg.typeIdentifier,
+        if jpegQuality == nil, (CGImageSourceGetType(source) as String?) == ImageFormat.jpeg.typeIdentifier,
            let data = try? Data(contentsOf: item.url, options: .alwaysMapped),
            let stripped = try? JPEGMarkers.strippingMetadata(data, orientation: 1),
            let provider = CGDataProvider(data: stripped as CFData),
@@ -273,8 +272,11 @@ public enum PDFEngine {
             return PageContent(image: jpeg, orientation: orientation)
         }
         let decoded = try ImageEngine.decodedFrame(source, index: 0, name: item.url.lastPathComponent)
-        return PageContent(image: try jpegQuality.map { try asJPEG(decoded, quality: $0) } ?? decoded, orientation: orientation)
+        return PageContent(image: try asJPEG(decoded, quality: jpegQuality ?? bestQuality), orientation: orientation)
     }
+
+    /// Quality for pages that must be encoded when "best" is chosen.
+    static let bestQuality = 0.95
 
     /// Re-encodes as JPEG in memory and returns an image backed by that
     /// JPEG data, so the PDF embeds it directly (DCTDecode).
