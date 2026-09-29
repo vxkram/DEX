@@ -46,7 +46,8 @@ struct Workspace: View {
             VStack(spacing: 16) {
                 PreviewCanvas(document: document, isCropping: tool == .crop)
                     .overlay(alignment: .bottom) {
-                        if tool != .convert { ExportToast(document: document) }
+                        // Tool panels show export status in their footer.
+                        if tool == nil || tool == .info { ExportToast(document: document) }
                     }
                 ActionDock(selection: $tool)
             }
@@ -152,9 +153,13 @@ private struct ExportToast: View {
                     Button("Show in Finder") { document.revealInFinder(url) }
                         .buttonStyle(.link)
                         .tint(Theme.ember)
+                    DismissButton { document.dismissExportStatus() }
                 }
             case .failed(let message):
-                Label(message, systemImage: "xmark.octagon.fill").foregroundStyle(.red).font(.callout)
+                HStack {
+                    Label(message, systemImage: "xmark.octagon.fill").foregroundStyle(.red).font(.callout)
+                    DismissButton { document.dismissExportStatus() }
+                }
             case .idle:
                 EmptyView()
             }

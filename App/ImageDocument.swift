@@ -190,6 +190,11 @@ final class ImageDocument {
         }
     }
 
+    /// Clears the "Saved…" / error message.
+    func dismissExportStatus() {
+        if !isExporting { exportState = .idle }
+    }
+
     func revealInFinder(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }

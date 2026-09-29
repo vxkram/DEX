@@ -35,6 +35,11 @@ struct CropPanel: View {
                 VStack(spacing: 10) {
                     PanelSectionHeader("Crop (pixels)")
                     CropFields(document: document, display: display)
+                    Text("W × H is the size of the crop. X and Y are how far its top-left corner is from the photo's left and top edges.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 

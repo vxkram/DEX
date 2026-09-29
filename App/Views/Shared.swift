@@ -11,6 +11,10 @@ struct ResultSection: View {
                 PanelSectionHeader("Result")
                 switch result {
                 case .success(let plan):
+                    let size = plan.outputDisplaySize
+                    Text(verbatim: "Saves as \(plan.request.target.displayName) · \(size.width) × \(size.height)")
+                        .font(.technical)
+                        .help("Change the format in Convert (⌘1).")
                     PlanSummary(plan: plan, document: document)
                 case .failure(let error):
                     Label(String(describing: error), systemImage: "xmark.octagon")
@@ -138,13 +142,18 @@ struct ExportFooter: View {
                     Button("Show in Finder") { document.revealInFinder(url) }
                         .buttonStyle(.link)
                         .tint(Theme.ember)
+                    DismissButton { document.dismissExportStatus() }
                 }
                 .font(.callout)
             case .failed(let message):
-                Label(message, systemImage: "xmark.octagon.fill")
-                    .foregroundStyle(.red)
-                    .font(.callout)
-                    .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .top) {
+                    Label(message, systemImage: "xmark.octagon.fill")
+                        .foregroundStyle(.red)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    DismissButton { document.dismissExportStatus() }
+                }
             case .idle:
                 EmptyView()
             }
@@ -163,5 +172,19 @@ struct ExportFooter: View {
             .help("Export (⌘E)")
         }
         .padding(16)
+    }
+}
+
+/// Small ✕ that clears a status message.
+struct DismissButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button("Dismiss", systemImage: "xmark", action: action)
+            .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .font(.caption.weight(.semibold))
+            .help("Dismiss")
     }
 }

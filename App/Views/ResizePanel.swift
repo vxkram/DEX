@@ -31,10 +31,12 @@ struct ResizePanel: View {
                         .font(.technicalSmall)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    Explanation("The exact width and height of the saved image. With the link on, changing one keeps the proportions so nothing is stretched.")
                 }
 
                 VStack(spacing: 10) {
                     PanelSectionHeader("Scale")
+                    Explanation("A percentage of the original size: 50% is half as wide and half as tall (a quarter of the pixels).")
                     HStack(spacing: 6) {
                         ForEach([25, 50, 75, 100], id: \.self) { percent in
                             Chip(title: "\(percent)%", isSelected: current == scaled(base, percent: percent)) {
@@ -46,19 +48,34 @@ struct ResizePanel: View {
 
                 VStack(spacing: 10) {
                     PanelSectionHeader("Long edge")
+                    Explanation("Makes the longer side exactly this many pixels and scales the other to match. Handy for uploads.")
                     HStack(spacing: 6) {
-                        ForEach([1080, 2048, 3840], id: \.self) { edge in
+                        ForEach([(1080, "Social"), (2048, "Web"), (3840, "4K")], id: \.0) { edge, use in
                             let size = longEdge(base, edge)
-                            Chip(title: "\(edge)", isSelected: current == size) { apply(size, base: base) }
-                                .disabled(!allowsEnlarging && max(base.width, base.height) < edge)
+                            Button { apply(size, base: base) } label: {
+                                VStack(spacing: 1) {
+                                    Text(verbatim: "\(edge)").font(.system(.caption, design: .monospaced, weight: .semibold))
+                                    Text(use).font(.caption2).foregroundStyle(current == size ? .white.opacity(0.85) : .secondary)
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 38)
+                                .foregroundStyle(current == size ? .white : .primary)
+                                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(current == size ? Theme.ember : .white.opacity(0.07)))
+                                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(.white.opacity(current == size ? 0 : 0.08)))
+                                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!allowsEnlarging && max(base.width, base.height) < edge)
                         }
                     }
                 }
 
-                Toggle("Allow enlarging", isOn: $allowsEnlarging)
-                    .toggleStyle(.switch)
-                    .tint(Theme.ember)
-                    .font(.callout)
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Allow enlarging", isOn: $allowsEnlarging)
+                        .toggleStyle(.switch)
+                        .tint(Theme.ember)
+                        .font(.callout)
+                    Explanation("Off by default: making an image bigger than the original only stretches it and adds blur, never detail.")
+                }
             }
         }
     }
@@ -93,5 +110,20 @@ struct ResizePanel: View {
             size = PixelSize(width: Int((Double(size.width) * factor).rounded()), height: Int((Double(size.height) * factor).rounded()))
         }
         document.geometry.resize = size == base ? nil : size
+    }
+}
+
+/// A short, plain-language note under a setting.
+struct Explanation: View {
+    let text: String
+
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
