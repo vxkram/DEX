@@ -212,10 +212,10 @@ public enum Planner {
                 ))
             }
         case .arrangement(let arrangement):
-            let sizes = [croppedSize] + arrangement.images.map(\.info.displaySize)
+            let sizes = arrangement.ordered(base: croppedSize, others: arrangement.images.map(\.info.displaySize))
             let result = ArrangementLayout.layout(sizes, arrangement)
             canvas = result.canvas
-            let names = [source.fileName] + arrangement.images.map(\.info.fileName)
+            let names = arrangement.ordered(base: source.fileName, others: arrangement.images.map(\.info.fileName))
             for (index, frame) in result.frames.enumerated() where frame.size != sizes[index] {
                 losses.append(.imageResampled(name: names[index], to: frame.size))
             }

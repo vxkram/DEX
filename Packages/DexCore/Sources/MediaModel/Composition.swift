@@ -93,22 +93,34 @@ public struct Arrangement: Codable, Sendable, Equatable {
     }
 
     public var layout: Layout
-    /// The images after the base, in order.
+    /// The other images, in order.
     public var images: [ComposedImage]
+    /// Where the base (the opened image) sits in the sequence; 0 = first.
+    public var basePosition: Int
     public var spacing: Int
     public var sizing: Sizing
     public var alignment: Alignment
     public var background: Background
 
     public init(layout: Layout, images: [ComposedImage], spacing: Int = 0, sizing: Sizing = .matchSmallest,
-                alignment: Alignment = .center, background: Background = .white) {
+                alignment: Alignment = .center, background: Background = .white, basePosition: Int = 0) {
         self.layout = layout
         self.images = images
+        self.basePosition = basePosition
         self.spacing = spacing
         self.sizing = sizing
         self.alignment = alignment
         self.background = background
     }
+
+    /// The base inserted into the other images at `basePosition`.
+    public func ordered<T>(base: T, others: [T]) -> [T] {
+        var items = others
+        items.insert(base, at: min(max(basePosition, 0), others.count))
+        return items
+    }
+
+    public var clampedBasePosition: Int { min(max(basePosition, 0), images.count) }
 }
 
 public enum Composition: Codable, Sendable, Equatable {

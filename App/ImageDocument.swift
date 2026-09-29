@@ -41,6 +41,8 @@ final class ImageDocument {
     var alignment: Arrangement.Alignment = .center
     var background: Arrangement.Background = .white
     var gridColumns = 2
+    /// Where the opened image sits among the arranged images.
+    var basePosition = 0
     var selectedLayerID: UUID?
     /// Small previews of added images, for the canvas and the list.
     private(set) var extraPreviews: [URL: PreviewImage] = [:]
@@ -109,7 +111,7 @@ final class ImageDocument {
         default: .horizontal
         }
         return Arrangement(layout: layout, images: arrangedImages, spacing: spacing, sizing: sizing,
-                           alignment: alignment, background: background)
+                           alignment: alignment, background: background, basePosition: basePosition)
     }
 
     /// Images the user has added, in the current mode.
@@ -155,23 +157,40 @@ final class ImageDocument {
         }
     }
 
+    /// All arranged images in order, the opened one included (nil).
+    var arrangementOrder: [ComposedImage?] {
+        arrangement.ordered(base: nil, others: arrangedImages.map { Optional($0) })
+    }
+
+    /// Most columns a grid can usefully have: one per image.
+    var maxGridColumns: Int { max(arrangedImages.count + 1, 2) }
+
+    /// Moves the item at `index` of `arrangementOrder` (the opened image
+    /// or an added one) by `offset`.
+    func moveArranged(at index: Int, by offset: Int) {
+        var order = arrangementOrder
+        let target = index + offset
+        guard order.indices.contains(index), order.indices.contains(target) else { return }
+        order.swapAt(index, target)
+        basePosition = order.firstIndex { $0 == nil } ?? 0
+        arrangedImages = order.compactMap { $0 }
+    }
+
     func removeImage(_ image: ComposedImage) {
         layers.removeAll { $0.image == image }
+        if let index = arrangedImages.firstIndex(of: image), index < basePosition { basePosition -= 1 }
         arrangedImages.removeAll { $0 == image }
+        basePosition = min(basePosition, arrangedImages.count)
+        gridColumns = min(gridColumns, maxGridColumns)
         if accessedExtras.remove(image.url) != nil { image.url.stopAccessingSecurityScopedResource() }
         extraPreviews[image.url] = nil
     }
 
-    /// Moves an image earlier (up) or later in the order; for layers,
-    /// later means drawn on top.
-    func move(_ image: ComposedImage, by offset: Int) {
-        if let index = layers.firstIndex(where: { $0.image == image }) {
-            let target = min(max(index + offset, 0), layers.count - 1)
-            layers.swapAt(index, target)
-        } else if let index = arrangedImages.firstIndex(of: image) {
-            let target = min(max(index + offset, 0), arrangedImages.count - 1)
-            arrangedImages.swapAt(index, target)
-        }
+    /// Moves a layer earlier (further down) or later (on top).
+    func moveLayer(at index: Int, by offset: Int) {
+        let target = index + offset
+        guard layers.indices.contains(index), layers.indices.contains(target) else { return }
+        layers.swapAt(index, target)
     }
 
     /// Switching between layers and arrangements carries the images over.
@@ -181,11 +200,13 @@ final class ImageDocument {
         composeMode = mode
         if wasLayers && mode != .layers {
             arrangedImages = images
+            basePosition = 0
         } else if !wasLayers && mode == .layers {
             let canvas = croppedSize ?? PixelSize(width: 1, height: 1)
             layers = images.map { OverlayLayer.placed($0, on: canvas) }
             selectedLayerID = layers.last?.id
         }
+        gridColumns = min(gridColumns, maxGridColumns)
     }
 
     func updateLayer(_ id: UUID, _ change: (inout OverlayLayer) -> Void) {
@@ -199,6 +220,7 @@ final class ImageDocument {
         extraPreviews = [:]
         layers = []
         arrangedImages = []
+        basePosition = 0
         selectedLayerID = nil
     }
 

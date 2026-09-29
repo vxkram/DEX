@@ -73,6 +73,19 @@ struct CompositorTests {
         #expect(close(try color(output, x: 100, y: 20), (0, 0, 255)))               // WebP blue
     }
 
+    @Test func theOpenedImageCanSitAnywhere() async throws {
+        defer { fixtures.cleanUp() }
+        let base = try await solid(.png, "base", 40, 40, (1, 0, 0))
+        let first = try await solid(.jpeg, "first", 40, 40, (0, 0, 1))
+        let last = try await solid(.webp, "last", 40, 40, (0, 1, 0))
+        let arrangement = Arrangement(layout: .horizontal, images: [try composed(first), try composed(last)], basePosition: 1)
+        let (output, plan) = try await run(base, ConvertRequest(target: .png, composition: .arrangement(arrangement)))
+        #expect(plan.expectedWidth == 120)
+        #expect(close(try color(output, x: 20, y: 20), (0, 0, 255), tolerance: 8))   // first
+        #expect(close(try color(output, x: 60, y: 20), (255, 0, 0)))                 // base in the middle
+        #expect(close(try color(output, x: 100, y: 20), (0, 255, 0)))                // last
+    }
+
     @Test func stackedKeepsEachImagesPixels() async throws {
         defer { fixtures.cleanUp() }
         let top = try await solid(.png, "top", 50, 20, (0, 1, 0))

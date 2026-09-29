@@ -30,13 +30,17 @@ enum Compositor {
         case .layers:
             canvas = baseSize
         case .arrangement(let arrangement):
-            let sizes = [baseSize] + extras.map { PixelSize(width: $0.width, height: $0.height) }
+            let sizes = arrangement.ordered(base: baseSize, others: extras.map { PixelSize(width: $0.width, height: $0.height) })
             let layout = ArrangementLayout.layout(sizes, arrangement)
             canvas = layout.canvas
             frames = layout.frames
         }
 
-        let inputs = [base] + extras
+        let inputs: [CGImage] = if case .arrangement(let arrangement) = composition {
+            arrangement.ordered(base: base, others: extras)
+        } else {
+            [base] + extras
+        }
         let deep = inputs.contains { $0.bitsPerComponent > 8 }
         let space = workingSpace(for: inputs)
         var info = CGImageAlphaInfo.premultipliedLast.rawValue

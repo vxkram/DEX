@@ -66,19 +66,37 @@ private struct ImageList: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            PanelSectionHeader(document.composeMode == .layers ? "Layers (top last)" : "Images (in order)")
-            if let info = document.info {
-                Row(name: info.fileName, format: info.format, size: info.displaySize, preview: document.preview,
-                    isBase: true, isSelected: false)
-            }
-            ForEach(document.composedImages, id: \.url) { image in
-                let layerID = document.layers.first { $0.image == image }?.id
-                Row(name: image.info.fileName, format: image.info.format, size: image.info.displaySize,
-                    preview: document.extraPreviews[image.url], isBase: false,
-                    isSelected: layerID != nil && layerID == document.selectedLayerID,
-                    moveUp: { document.move(image, by: -1) }, moveDown: { document.move(image, by: 1) },
-                    remove: { document.removeImage(image) })
-                    .onTapGesture { if let layerID { document.selectedLayerID = layerID } }
+            PanelSectionHeader(document.composeMode == .layers ? "Layers (bottom to top)" : "Images (in order)")
+            if document.composeMode == .layers {
+                // The opened image is the canvas: always at the bottom.
+                if let info = document.info {
+                    Row(name: info.fileName, format: info.format, size: info.displaySize, preview: document.preview,
+                        badge: "base", isSelected: false)
+                }
+                ForEach(Array(document.layers.enumerated()), id: \.element.id) { index, layer in
+                    let image = layer.image
+                    Row(name: image.info.fileName, format: image.info.format, size: image.info.displaySize,
+                        preview: document.extraPreviews[image.url], isSelected: layer.id == document.selectedLayerID,
+                        moveUp: index > 0 ? { document.moveLayer(at: index, by: -1) } : nil,
+                        moveDown: index < document.layers.count - 1 ? { document.moveLayer(at: index, by: 1) } : nil,
+                        remove: { document.removeImage(image) })
+                        .onTapGesture { document.selectedLayerID = layer.id }
+                }
+            } else {
+                // Every image, the opened one included, can be reordered.
+                let order = document.arrangementOrder
+                ForEach(Array(order.enumerated()), id: \.offset) { index, item in
+                    let up: (() -> Void)? = index > 0 ? { document.moveArranged(at: index, by: -1) } : nil
+                    let down: (() -> Void)? = index < order.count - 1 ? { document.moveArranged(at: index, by: 1) } : nil
+                    if let image = item {
+                        Row(name: image.info.fileName, format: image.info.format, size: image.info.displaySize,
+                            preview: document.extraPreviews[image.url], isSelected: false,
+                            moveUp: up, moveDown: down, remove: { document.removeImage(image) })
+                    } else if let info = document.info {
+                        Row(name: info.fileName, format: info.format, size: info.displaySize, preview: document.preview,
+                            badge: "opened", isSelected: false, moveUp: up, moveDown: down)
+                    }
+                }
             }
             Button {
                 document.presentAddImagesPanel()
@@ -109,7 +127,7 @@ private struct ImageList: View {
         let format: ImageFormat?
         let size: PixelSize
         let preview: PreviewImage?
-        let isBase: Bool
+        var badge: String?
         let isSelected: Bool
         var moveUp: (() -> Void)?
         var moveDown: (() -> Void)?
@@ -129,18 +147,20 @@ private struct ImageList: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(name).font(.callout).lineLimit(1).truncationMode(.middle)
-                    Text(verbatim: "\(format?.displayName ?? "?") · \(size.width) × \(size.height)" + (isBase ? " · base" : ""))
+                    Text(verbatim: "\(format?.displayName ?? "?") · \(size.width) × \(size.height)" + (badge.map { " · \($0)" } ?? ""))
                         .font(.technicalSmall)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 4)
-                if !isBase {
+                if moveUp != nil || moveDown != nil {
                     Button("Move up", systemImage: "chevron.up") { moveUp?() }
                         .labelStyle(.iconOnly).buttonStyle(.borderless)
+                        .disabled(moveUp == nil)
                     Button("Move down", systemImage: "chevron.down") { moveDown?() }
                         .labelStyle(.iconOnly).buttonStyle(.borderless)
-                    DismissButton { remove?() }
+                        .disabled(moveDown == nil)
                 }
+                if let remove { DismissButton(action: remove) }
             }
             .padding(6)
             .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -255,7 +275,7 @@ private struct ArrangementControls: View {
             PanelSectionHeader("Arrangement")
 
             if document.composeMode == .grid {
-                Stepper(value: $document.gridColumns, in: 2...8) {
+                Stepper(value: $document.gridColumns, in: 2...document.maxGridColumns) {
                     Text(verbatim: "Columns: \(document.gridColumns)").font(.callout)
                 }
             }

@@ -209,10 +209,11 @@ private struct CompositeStage: View {
                 backgroundView
                 // The (rotated, cropped) base.
                 // In "match sizes" arrangements the base itself may be scaled.
-                let baseScale = scale * CGFloat(layout.frames[0].width) / CGFloat(crop.width)
+                let baseScale = scale * CGFloat(layout.frames[baseIndex].width) / CGFloat(crop.width)
+                let baseFrame = layout.frames[baseIndex]
                 CroppedBase(preview: preview, orientation: document.geometry.orientation, display: display, crop: crop, scale: baseScale)
-                    .frame(width: CGFloat(layout.frames[0].width) * scale, height: CGFloat(layout.frames[0].height) * scale)
-                    .offset(x: CGFloat(layout.frames[0].x) * scale, y: CGFloat(layout.frames[0].y) * scale)
+                    .frame(width: CGFloat(baseFrame.width) * scale, height: CGFloat(baseFrame.height) * scale)
+                    .offset(x: CGFloat(baseFrame.x) * scale, y: CGFloat(baseFrame.y) * scale)
 
                 if document.composeMode == .layers {
                     ForEach(document.layers) { layer in
@@ -220,7 +221,7 @@ private struct CompositeStage: View {
                     }
                 } else {
                     ForEach(Array(document.arrangedImages.enumerated()), id: \.element.url) { index, image in
-                        let frame = layout.frames[index + 1]
+                        let frame = layout.frames[index < baseIndex ? index : index + 1]
                         Group {
                             if let extra = document.extraPreviews[image.url] {
                                 Image(decorative: extra.cgImage, scale: 1).resizable().interpolation(.high)
@@ -239,11 +240,18 @@ private struct CompositeStage: View {
         }
     }
 
+    private var baseIndex: Int {
+        document.composeMode == .layers ? 0 : document.arrangement.clampedBasePosition
+    }
+
     private func canvasLayout(base: PixelSize) -> ArrangementLayout.Result {
         if document.composeMode == .layers {
             return ArrangementLayout.Result(canvas: base, frames: [PixelRect(x: 0, y: 0, width: base.width, height: base.height)])
         }
-        return ArrangementLayout.layout([base] + document.arrangedImages.map(\.info.displaySize), document.arrangement)
+        let arrangement = document.arrangement
+        return ArrangementLayout.layout(
+            arrangement.ordered(base: base, others: document.arrangedImages.map(\.info.displaySize)), arrangement
+        )
     }
 
     @ViewBuilder private var backgroundView: some View {
