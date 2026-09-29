@@ -72,3 +72,15 @@ Every plan that promises HDR is verified after writing: an output missing its ga
 | **The preview is the real PDF**: the one built for the size estimate is rendered page by page | What you see is exactly what gets saved (page size, margins, edits) |
 | **Pages are rendered with `CGPDFPage` on white** at 72–600 DPI | Rotation- and crop-box-aware. Output files are named `<name>-page-01.<ext>` and never overwrite existing ones |
 | **Password-protected PDFs** prompt for the password; the unlock is kept only in memory | |
+
+## Performance pass (added 2026-09-29; release builds, M4 Pro, 24 GB)
+
+| Operation (100 MP JPEG) | Before | After | Change |
+|---|---|---|---|
+| → WebP lossy q85 | 17.7 s, 2.2 GB peak | **2.8 s**, 1.9 GB | Above 24 MP: no sharp YUV. Above 48 MP: effort 2 (+8% size). Above 24 MP lossy imports straight to YUV; the RGBA copy is freed right after import and the decoded image as soon as libwebp has its copy |
+| Resize 50% | 1.1 s, 1.76 GB | **0.57 s, 640 MB** | Shrinking without a crop decodes at about the target size (ImageIO thumbnail, no transform), then fits exactly with vImage. A test shows a mean difference under 4/255 against full-resolution Lanczos |
+| Long edge 2048 | — | **0.24 s, 119 MB** | Same path |
+| → HEIC / JPEG, lossless JPEG crop / repack / strip | 0.2–1.3 s, 75–390 MB | unchanged | Already fine |
+| → AVIF | 2.2 s, 1.8 GB | unchanged | The memory is inside ImageIO's AVIF encoder |
+
+**App footprint** (as Activity Monitor reports it): about 100 MB with a 48–100 MP photo open. Crop's pixel loupe decodes full resolution (capped at 50 MP; above that an 8K decode) and is released when leaving Crop. The allocator keeps that memory for reuse, which shows as about 500 MB until the system reclaims it; reopening Crop doesn't grow it (checked with `malloc_history`: no live block).

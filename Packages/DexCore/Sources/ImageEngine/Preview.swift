@@ -42,7 +42,7 @@ extension ImageEngine {
     /// The full-resolution image with an EXIF orientation applied, for
     /// pixel-accurate views such as the crop loupe. Images above
     /// `maxMegapixels` fall back to a down-sampled decode.
-    public static func displayImage(url: URL, orientation: Int, maxMegapixels: Int = 80) async throws -> PreviewImage {
+    public static func displayImage(url: URL, orientation: Int, maxMegapixels: Int = 50) async throws -> PreviewImage {
         try await MediaWork.run { token in
             guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
                   let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]

@@ -20,19 +20,24 @@ enum WebPWriter {
         token: CancellationToken,
         progress: (@Sendable (Double) -> Void)?
     ) throws {
-        let image = if let composition = plan.request.composition, !composition.isEmpty {
-            try Compositor.render(source, plan: plan, name: name, token: token)
-        } else {
-            try ImageEngine.geometryApplied(to: ImageEngine.decodedFrame(source, index: 0, name: name), plan: plan)
-        }
+        // Decoded inside a closure so the full-size image is released as
+        // soon as libwebp has its copy.
+        let (colorSpace, imported) = try { () throws -> (CGColorSpace, WebPPicture) in
+            let image = if let composition = plan.request.composition, !composition.isEmpty {
+                try Compositor.render(source, plan: plan, name: name, token: token)
+            } else {
+                try ImageEngine.planImage(source, index: 0, name: name, plan: plan)
+            }
+            try token.check()
+            let colorSpace = rgbColorSpace(of: image)
+            let argb = usesARGB(width: image.width, height: image.height, lossyQuality: plan.lossyQuality)
+            return (colorSpace, try makePicture(image, in: colorSpace, argb: argb))
+        }()
+        var picture = imported
+        defer { WebPPictureFree(&picture) }
         try token.check()
 
-        let colorSpace = rgbColorSpace(of: image)
-        let pixels = try rgbaPixels(image, in: colorSpace)
-        defer { pixels.free() }
-        try token.check()
-
-        let bitstream = try encode(pixels, lossyQuality: plan.lossyQuality, token: token, progress: progress)
+        let bitstream = try encode(&picture, lossyQuality: plan.lossyQuality, token: token, progress: progress)
         let icc = embeddedProfile(colorSpace)
         let xmp = metadata(source, policy: plan.request.metadata)
         let output = (icc == nil && xmp == nil) ? bitstream : try mux(bitstream, icc: icc, xmp: xmp)
@@ -43,9 +48,11 @@ enum WebPWriter {
     /// Encodes an already-rendered image (e.g. a PDF page), no metadata.
     static func write(_ image: CGImage, lossyQuality: Double?, to url: URL, token: CancellationToken) throws {
         let colorSpace = rgbColorSpace(of: image)
-        let pixels = try rgbaPixels(image, in: colorSpace)
-        defer { pixels.free() }
-        let bitstream = try encode(pixels, lossyQuality: lossyQuality, token: token, progress: nil)
+        var picture = try makePicture(
+            image, in: colorSpace, argb: usesARGB(width: image.width, height: image.height, lossyQuality: lossyQuality)
+        )
+        defer { WebPPictureFree(&picture) }
+        let bitstream = try encode(&picture, lossyQuality: lossyQuality, token: token, progress: nil)
         let icc = embeddedProfile(colorSpace)
         try (icc == nil ? bitstream : try mux(bitstream, icc: icc, xmp: nil)).write(to: url)
     }
@@ -80,19 +87,50 @@ enum WebPWriter {
 
     // MARK: - Encoding
 
+    /// Imports the pixels into a libwebp picture and frees the straight-RGBA
+    /// copy at once, so a 100 MP image doesn't sit in memory three times.
+    /// Large lossy images are imported straight to YUV (1.5 bytes/pixel)
+    /// instead of ARGB (4 bytes/pixel); lossless and sharp-YUV need ARGB.
+    static func usesARGB(width: Int, height: Int, lossyQuality: Double?) -> Bool {
+        lossyQuality == nil || width * height <= 24_000_000
+    }
+
+    private static func makePicture(_ image: CGImage, in colorSpace: CGColorSpace, argb: Bool) throws -> WebPPicture {
+        var picture = WebPPicture()
+        guard WebPPictureInit(&picture) != 0 else {
+            throw ConvertError.encodeFailed(.webp, reason: "out of memory")
+        }
+        let pixels = try rgbaPixels(image, in: colorSpace)
+        defer { pixels.free() }
+        picture.width = Int32(pixels.width)
+        picture.height = Int32(pixels.height)
+        picture.use_argb = argb ? 1 : 0
+        guard WebPPictureImportRGBA(
+            &picture, pixels.data.assumingMemoryBound(to: UInt8.self), Int32(pixels.rowBytes)
+        ) != 0 else {
+            WebPPictureFree(&picture)
+            throw ConvertError.encodeFailed(.webp, reason: "out of memory")
+        }
+        return picture
+    }
+
     private static func encode(
-        _ pixels: vImage_Buffer,
+        _ picture: inout WebPPicture,
         lossyQuality: Double?,
         token: CancellationToken,
         progress: (@Sendable (Double) -> Void)?
     ) throws -> Data {
+        let megapixels = Int(picture.width) * Int(picture.height) / 1_000_000
         var config = WebPConfig()
         if let quality = lossyQuality {
             guard WebPConfigPreset(&config, WEBP_PRESET_PHOTO, Float(quality * 100)) != 0 else {
                 throw ConvertError.encodeFailed(.webp, reason: "invalid configuration")
             }
-            config.method = 5
-            config.use_sharp_yuv = 1
+            // Above 24 MP: no sharp RGB→YUV (needs a full ARGB copy, no
+            // visible gain at that size). Above 48 MP: effort 2, which on
+            // 100 MP takes 3.2 s instead of 13.3 s for an 8% larger file.
+            config.method = megapixels > 48 ? 2 : megapixels > 24 ? 4 : 5
+            config.use_sharp_yuv = megapixels > 24 ? 0 : 1
         } else {
             // Effort 3: on a 12 MP iPhone photo, 3.7 s and 5.62 MB versus 5.3 s
             // and 5.61 MB at effort 6 (release build, M4 Pro).
@@ -104,20 +142,6 @@ enum WebPWriter {
         config.thread_level = 1
         guard WebPValidateConfig(&config) != 0 else {
             throw ConvertError.encodeFailed(.webp, reason: "invalid configuration")
-        }
-
-        var picture = WebPPicture()
-        guard WebPPictureInit(&picture) != 0 else {
-            throw ConvertError.encodeFailed(.webp, reason: "out of memory")
-        }
-        defer { WebPPictureFree(&picture) }
-        picture.width = Int32(pixels.width)
-        picture.height = Int32(pixels.height)
-        picture.use_argb = 1
-        guard WebPPictureImportRGBA(
-            &picture, pixels.data.assumingMemoryBound(to: UInt8.self), Int32(pixels.rowBytes)
-        ) != 0 else {
-            throw ConvertError.encodeFailed(.webp, reason: "out of memory")
         }
 
         var writer = WebPMemoryWriter()

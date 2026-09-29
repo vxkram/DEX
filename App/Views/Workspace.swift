@@ -68,6 +68,11 @@ struct Workspace: View {
         .ignoresSafeArea(.container, edges: .top)
         .animation(.spring(duration: 0.3), value: tool)
         .task(id: document.estimateKey) { await document.refreshEstimate() }
+        // The loupe's full-resolution pixels (hundreds of MB for big
+        // photos) are only needed while cropping.
+        .onChange(of: document.tool) { _, tool in
+            if tool != .crop { document.releaseLoupe() }
+        }
     }
 }
 

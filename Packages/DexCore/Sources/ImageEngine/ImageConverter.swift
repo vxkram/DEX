@@ -295,8 +295,9 @@ extension ImageEngine {
                 if composes {
                     image = try Compositor.render(source, plan: plan, name: url.lastPathComponent, token: token)
                 } else {
-                    image = try decodedFrame(source, index: index, name: url.lastPathComponent)
-                    if changesPixels { image = try geometryApplied(to: image, plan: plan) }
+                    image = changesPixels
+                        ? try planImage(source, index: index, name: url.lastPathComponent, plan: plan)
+                        : try decodedFrame(source, index: index, name: url.lastPathComponent)
                 }
                 if changesPixels { properties = removingStaleSize(properties) }
                 CGImageDestinationAddImage(destination, image, properties as CFDictionary)
@@ -360,6 +361,35 @@ extension ImageEngine {
             throw ConvertError.unreadable(name)
         }
         return image
+    }
+
+    /// Decodes a frame and applies the plan's geometry. Shrinking without a
+    /// crop decodes straight at (about) the target size (JPEG and HEIC
+    /// decoders can scale down while decoding), which avoids holding the
+    /// full-resolution image; the exact size is then fitted on the small
+    /// image.
+    static func planImage(_ source: CGImageSource, index: Int, name: String, plan: ConversionPlan) throws -> CGImage {
+        if let size = plan.resize, plan.pixelCrop == nil,
+           let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
+           let width = properties[kCGImagePropertyPixelWidth] as? Int,
+           let height = properties[kCGImagePropertyPixelHeight] as? Int,
+           (properties[kCGImagePropertyDepth] as? Int ?? 8) <= 8,
+           max(size.width, size.height) * 3 / 2 <= max(width, height) {
+            let options = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: max(size.width, size.height),
+                kCGImageSourceCreateThumbnailWithTransform: false,
+                kCGImageSourceShouldCacheImmediately: true,
+            ] as CFDictionary
+            if let small = CGImageSourceCreateThumbnailAtIndex(source, index, options) {
+                var image = try PixelOps.orient(small, plan.bakedOrientation)
+                if image.width != size.width || image.height != size.height {
+                    image = try PixelOps.resize(image, to: size)
+                }
+                return image
+            }
+        }
+        return try geometryApplied(to: decodedFrame(source, index: index, name: name), plan: plan)
     }
 
     /// Bakes orientation, then crops, then resizes, as the plan says.

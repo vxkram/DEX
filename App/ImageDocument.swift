@@ -601,6 +601,13 @@ final class ImageDocument {
         }
     }
 
+    /// The loupe's full-resolution pixels are only needed while cropping.
+    func releaseLoupe() {
+        loupeTask?.cancel()
+        loupeTask = nil
+        loupeImage = nil
+    }
+
     /// Decodes the full-resolution image, oriented as displayed, so the
     /// loupe shows real pixels rather than the down-sampled preview.
     func prepareLoupe() {
@@ -740,3 +747,4 @@ struct PDFEstimateKey: Equatable {
     let quality: Double?
     let request: ConvertRequest?
 }
+

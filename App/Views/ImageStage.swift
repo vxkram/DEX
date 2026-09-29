@@ -35,6 +35,7 @@ struct ImageStage: View {
             }
             .frame(width: frame.width, height: frame.height)
             .onAppear { document.prepareLoupe() }
+            .onDisappear { document.releaseLoupe() }
             .onChange(of: document.geometry.orientation) { document.prepareLoupe() }
     }
 

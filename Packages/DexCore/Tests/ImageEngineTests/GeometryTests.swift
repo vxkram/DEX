@@ -137,6 +137,26 @@ struct GeometryTests {
         #expect(info.colorProfile?.contains("P3") == true)
     }
 
+    @Test func fastDownscaleMatchesFullResolutionLanczos() async throws {
+        defer { fixtures.cleanUp() }
+        var spec = FixtureFactory.Spec()
+        spec.width = 1200
+        spec.height = 900
+        spec.noise = true
+        let source = try await fixtures.image(.jpeg, named: "big.jpg", spec)
+        let (_, plan) = try ImageEngine.plan(source, ConvertRequest(target: .png, geometry: Geometry(resize: PixelSize(width: 400, height: 300))))
+        let imageSource = try #require(CGImageSourceCreateWithURL(source as CFURL, nil))
+        let fast = try ImageEngine.planImage(imageSource, index: 0, name: "big.jpg", plan: plan)
+        let full = try ImageEngine.geometryApplied(to: ImageEngine.decodedFrame(imageSource, index: 0, name: "big.jpg"), plan: plan)
+        #expect(fast.width == 400 && fast.height == 300)
+        // Mean absolute difference per channel on 0–255: visually identical.
+        let a = try render(fast), b = try render(full)
+        var total = 0
+        for i in 0..<a.data.count where i % 4 != 3 { total += abs(Int(a.data[i]) - Int(b.data[i])) }
+        let mean = Double(total) / Double(a.data.count * 3 / 4)
+        #expect(mean < 4, "mean difference \(mean)")
+    }
+
     @Test func animatedGIFCropKeepsEveryFrame() async throws {
         defer { fixtures.cleanUp() }
         var spec = FixtureFactory.Spec()
