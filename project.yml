@@ -42,7 +42,7 @@ targets:
           - CFBundleTypeName: Image
             CFBundleTypeRole: Viewer
             LSHandlerRank: Alternate
-            LSItemContentTypes: [public.image]
+            LSItemContentTypes: [public.image, com.adobe.pdf]
     entitlements:
       path: App/Support/DEX.entitlements
       properties:

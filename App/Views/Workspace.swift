@@ -30,7 +30,10 @@ enum Tool: String, CaseIterable, Identifiable {
         }
     }
 
-    var isAvailable: Bool { self != .pdf }
+    /// PDFs only get the PDF and Info tools; images get everything.
+    func isAvailable(isPDF: Bool) -> Bool {
+        isPDF ? (self == .pdf || self == .info) : true
+    }
 }
 
 /// The open-file layout: preview and dock on the left, the chosen tool's
@@ -47,7 +50,7 @@ struct Workspace: View {
                         // Tool panels show export status in their footer.
                         if tool == nil || tool == .info { ExportToast(document: document) }
                     }
-                ActionDock(selection: $document.tool)
+                ActionDock(selection: $document.tool, isPDF: document.isPDFDocument)
             }
 
             if tool == .crop, let drag = document.cropDrag {
@@ -81,6 +84,11 @@ private struct TopBar: View {
                     .font(.headline)
                     .lineLimit(1)
                     .truncationMode(.middle)
+            }
+            if let pdf = document.pdfInfo {
+                Text(verbatim: "\(pdf.pageCount) page\(pdf.pageCount == 1 ? "" : "s")  ·  \(ByteCountFormatter.string(fromByteCount: pdf.fileSize, countStyle: .file))")
+                    .font(.technicalSmall)
+                    .foregroundStyle(.secondary)
             }
             if let info = document.info {
                 let output = document.plan?.outputDisplaySize
@@ -122,7 +130,9 @@ private struct PreviewCanvas: View {
 
     var body: some View {
         ZStack {
-            if document.preview != nil {
+            if document.isPDFDocument {
+                PageGrid(document: document)
+            } else if document.preview != nil {
                 ImageStage(document: document, isCropping: isCropping)
             } else if let error = document.loadError {
                 ContentUnavailableView("Can't open this file", systemImage: "exclamationmark.triangle", description: Text(error))
@@ -179,6 +189,7 @@ private struct ExportToast: View {
 
 private struct ActionDock: View {
     @Binding var selection: Tool?
+    let isPDF: Bool
 
     var body: some View {
         HStack(spacing: 2) {
@@ -186,7 +197,7 @@ private struct ActionDock: View {
                 if tool == .info {
                     Divider().frame(height: 30).padding(.horizontal, 6)
                 }
-                DockButton(tool: tool, isSelected: selection == tool) {
+                DockButton(tool: tool, isSelected: selection == tool, isAvailable: tool.isAvailable(isPDF: isPDF)) {
                     selection = selection == tool ? nil : tool
                 }
             }
@@ -197,7 +208,7 @@ private struct ActionDock: View {
             ForEach(Array(Tool.allCases.enumerated()), id: \.element) { index, tool in
                 Button(tool.title) { selection = tool }
                     .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
-                    .disabled(!tool.isAvailable)
+                    .disabled(!tool.isAvailable(isPDF: isPDF))
                     .opacity(0)
                     .frame(width: 0, height: 0)
                     .accessibilityHidden(true)
@@ -210,6 +221,7 @@ private struct ActionDock: View {
 private struct DockButton: View {
     let tool: Tool
     let isSelected: Bool
+    let isAvailable: Bool
     let action: () -> Void
 
     var body: some View {
@@ -230,9 +242,9 @@ private struct DockButton: View {
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
-        .disabled(!tool.isAvailable)
-        .opacity(tool.isAvailable ? 1 : 0.32)
-        .help(tool.isAvailable ? tool.title : "\(tool.title): coming in a later build")
+        .disabled(!isAvailable)
+        .opacity(isAvailable ? 1 : 0.32)
+        .help(isAvailable ? tool.title : "\(tool.title): for images only")
     }
 }
 
@@ -264,6 +276,7 @@ private struct ToolPanel: View {
             case .crop: CropPanel(document: document)
             case .compress: CompressPanel(document: document)
             case .compose: ComposePanel(document: document)
+            case .pdf: PDFPanel(document: document)
             default: InfoPanel(document: document)
             }
         }

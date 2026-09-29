@@ -20,7 +20,7 @@ struct DropZoneView: View {
                 .symbolEffect(.bounce, value: isTargeted)
 
             VStack(spacing: 8) {
-                Text("Drop an image")
+                Text("Drop an image or PDF")
                     .font(.title2.weight(.semibold))
                 Text(formats.map(\.displayName).joined(separator: " · "))
                     .font(.technicalSmall)

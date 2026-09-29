@@ -7,6 +7,19 @@ struct InfoPanel: View {
 
     var body: some View {
         ScrollView {
+            if let pdf = document.pdfInfo {
+                VStack(spacing: 0) {
+                    Fact("Format", "PDF")
+                    Fact("Pages", "\(pdf.pageCount)")
+                    if let first = pdf.pageSizes.first {
+                        Fact("Page 1", "\(Int(first.width)) × \(Int(first.height)) pt")
+                    }
+                    Fact("File size", ByteCountFormatter.string(fromByteCount: pdf.fileSize, countStyle: .file))
+                    Fact("Protected", pdf.isEncrypted ? "Yes" : "No")
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 16)
+            }
             if let info = document.info {
                 VStack(spacing: 0) {
                     Fact("Format", info.format?.displayName ?? info.typeIdentifier)

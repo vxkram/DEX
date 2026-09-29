@@ -28,14 +28,19 @@ struct ContentView: View {
             guard let url = urls.first else { return false }
             // In Compose, dropped images join the composition instead of
             // replacing the photo.
-            if document.tool == .compose && document.sourceURL != nil {
+            if document.tool == .compose && document.sourceURL != nil && !document.isPDFDocument {
                 Task { await document.addImages(urls) }
+            } else if document.tool == .pdf && document.sourceURL != nil && !document.isPDFDocument {
+                Task { await document.addPDFImages(urls) }
             } else {
                 Task { await document.open(url) }
             }
             return true
         } isTargeted: { isDropTargeted = $0 }
         .navigationTitle(document.sourceURL?.lastPathComponent ?? "DEX")
+        .sheet(isPresented: $document.needsPDFPassword) {
+            PDFPasswordSheet(document: document)
+        }
         .preferredColorScheme(.dark)
     }
 }

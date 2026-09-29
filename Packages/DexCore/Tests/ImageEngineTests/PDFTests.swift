@@ -68,6 +68,18 @@ struct PDFTests {
         #expect(pdfData.count < jpegData.count + 4096)
     }
 
+    @Test func smallerPagesShrinkNonJPEGImages() async throws {
+        defer { fixtures.cleanUp() }
+        let png = try await solid(.png, "noisy", 600, 400, (0, 0, 0), noise: true)
+        let lossless = try await makePDF([png])
+        let smaller = fixtures.directory.appendingPathComponent("smaller.pdf")
+        try await PDFEngine.makePDF(from: [PDFEngine.PageImage(url: png)], pageSize: .fitImage, margin: 0,
+                                    title: "t", imageQuality: 0.9, to: smaller)
+        let (big, small) = (try Data(contentsOf: lossless).count, try Data(contentsOf: smaller).count)
+        #expect(small < big / 2, "JPEG pages should be much smaller (\(small) vs \(big))")
+        #expect(try PDFEngine.info(url: smaller).pageSizes[0] == CGSize(width: 600, height: 400))
+    }
+
     @Test func noLocationLeaksIntoThePDF() async throws {
         defer { fixtures.cleanUp() }
         let jpeg = try await solid(.jpeg, "gps", 200, 100, (1, 1, 1), gps: true)

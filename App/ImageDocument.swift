@@ -32,6 +32,26 @@ final class ImageDocument {
     /// Lossless compression (Compress → Lossless).
     var optimize = false
 
+    // MARK: PDF state
+    /// The open file is a PDF (PDF → images); otherwise PDF means images → PDF.
+    private(set) var isPDFDocument = false
+    private(set) var pdfInfo: PDFInfo?
+    var needsPDFPassword = false
+    var pdfPasswordError: String?
+    @ObservationIgnored private var pdfPassword: String?
+    private(set) var pageThumbnails: [Int: PDFEngine.CGImageBox] = [:]
+    var selectedPages: Set<Int> = []
+    var rasterDPI: Double = 150
+    var rasterFormat: ImageFormat = .png
+    var rasterQuality: Double = 0.9
+    var pdfPageSize: PDFEngine.PageSize = .fitImage
+    var pdfMargin: Double = 36
+    /// nil = non-JPEG pages lossless; a value = stored as JPEG at it.
+    var pdfImageQuality: Double?
+    private(set) var pdfEstimate: (key: PDFEstimateKey, bytes: Int64?)?
+    /// Extra pages after the opened image for Images → PDF.
+    var pdfImages: [ComposedImage] = []
+
     // MARK: Compose state
     var composeMode: ComposeMode = .layers
     var layers: [OverlayLayer] = []
@@ -220,6 +240,7 @@ final class ImageDocument {
         extraPreviews = [:]
         layers = []
         arrangedImages = []
+        pdfImages = []
         basePosition = 0
         selectedLayerID = nil
     }
@@ -248,7 +269,7 @@ final class ImageDocument {
 
     func presentOpenPanel() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image]
+        panel.allowedContentTypes = [.image, .pdf]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -274,7 +295,21 @@ final class ImageDocument {
         loupeImage = nil
         loadError = nil
         exportState = .idle
+        isPDFDocument = false
+        pdfInfo = nil
+        pdfPassword = nil
+        pdfPasswordError = nil
+        needsPDFPassword = false
+        pageThumbnails = [:]
+        selectedPages = []
         isLoading = true
+
+        if PDFEngine.isPDF(url) {
+            isPDFDocument = true
+            tool = .pdf
+            await loadPDF(url)
+            return
+        }
 
         do {
             let info = try await ImageEngine.inspectAsync(url: url)
@@ -288,6 +323,199 @@ final class ImageDocument {
             if sourceURL == url { loadError = String(describing: error) }
         }
         if sourceURL == url { isLoading = false }
+    }
+
+    // MARK: - PDF → images
+
+    private func loadPDF(_ url: URL) async {
+        let password = pdfPassword
+        do {
+            let info = try await Task.detached { try PDFEngine.info(url: url, password: password) }.value
+            guard sourceURL == url else { return }
+            pdfInfo = info
+            needsPDFPassword = false
+            selectedPages = Set(1...info.pageCount)
+            isLoading = false
+            // Thumbnails about 320 px on the long side, page by page.
+            for page in 1...min(info.pageCount, 500) {
+                let size = info.pageSizes[page - 1]
+                let dpi = 72 * 320 / max(size.width, size.height, 1)
+                guard let image = try? await Task.detached(operation: {
+                    PDFEngine.CGImageBox(try PDFEngine.renderPage(url: url, page: page, dpi: dpi, password: password))
+                }).value, sourceURL == url else { continue }
+                pageThumbnails[page] = image
+            }
+        } catch PDFError.locked {
+            needsPDFPassword = true
+            isLoading = false
+        } catch PDFError.wrongPassword {
+            pdfPasswordError = "That password didn't work. Try again."
+            needsPDFPassword = true
+            isLoading = false
+        } catch {
+            loadError = String(describing: error)
+            isLoading = false
+        }
+    }
+
+    func unlockPDF(with password: String) {
+        guard let sourceURL else { return }
+        pdfPassword = password
+        pdfPasswordError = nil
+        needsPDFPassword = false
+        isLoading = true
+        Task { await loadPDF(sourceURL) }
+    }
+
+    func togglePage(_ page: Int) {
+        if selectedPages.contains(page) { selectedPages.remove(page) } else { selectedPages.insert(page) }
+    }
+
+    func exportPagesToFolder() {
+        guard let sourceURL, !selectedPages.isEmpty, !isExporting else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Export Here"
+        panel.message = "Choose a folder for \(selectedPages.count) page image\(selectedPages.count == 1 ? "" : "s")."
+        panel.directoryURL = sourceURL.deletingLastPathComponent()
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        let pages = selectedPages.sorted()
+        let (dpi, format, password) = (rasterDPI, rasterFormat, pdfPassword)
+        let quality = format.hasLossyMode ? (format == .webp && rasterQuality >= 0.99 ? nil : rasterQuality) : nil
+        exportState = .running(0)
+        exportTask = Task {
+            let accessed = folder.startAccessingSecurityScopedResource()
+            defer { if accessed { folder.stopAccessingSecurityScopedResource() } }
+            do {
+                let files = try await PDFEngine.exportPages(
+                    url: sourceURL, pages: pages, dpi: dpi, format: format, lossyQuality: quality,
+                    to: folder, password: password
+                ) { fraction in
+                    Task { @MainActor in
+                        guard case .running = self.exportState else { return }
+                        self.exportState = .running(fraction)
+                    }
+                }
+                exportState = .saved(files.first ?? folder)
+            } catch is CancellationError {
+                exportState = .idle
+            } catch {
+                exportState = .failed(String(describing: error))
+            }
+        }
+    }
+
+    // MARK: - Images → PDF
+
+    func addPDFImages(_ urls: [URL]) async {
+        for url in urls where url != sourceURL && !pdfImages.contains(where: { $0.url == url }) {
+            if url.startAccessingSecurityScopedResource() { accessedExtras.insert(url) }
+            guard let info = try? await ImageEngine.inspectAsync(url: url) else {
+                composeWarning = "“\(url.lastPathComponent)” couldn't be read as an image."
+                continue
+            }
+            pdfImages.append(ComposedImage(url: url, info: info))
+            if extraPreviews[url] == nil, let preview = try? await ImageEngine.preview(url: url, maxPixelSize: 1024) {
+                extraPreviews[url] = preview
+            }
+        }
+    }
+
+    func presentAddPDFImagesPanel() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = true
+        guard panel.runModal() == .OK else { return }
+        let urls = panel.urls
+        Task { await addPDFImages(urls) }
+    }
+
+    func movePDFImage(at index: Int, by offset: Int) {
+        let target = index + offset
+        guard pdfImages.indices.contains(index), pdfImages.indices.contains(target) else { return }
+        pdfImages.swapAt(index, target)
+    }
+
+    func removePDFImage(_ image: ComposedImage) {
+        pdfImages.removeAll { $0 == image }
+    }
+
+    func presentPDFSavePanel() {
+        guard let sourceURL, !isExporting else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.nameFieldStringValue = SafeOutput.defaultDestination(for: sourceURL, pathExtension: "pdf").lastPathComponent
+        panel.directoryURL = sourceURL.deletingLastPathComponent()
+        panel.canCreateDirectories = true
+        panel.message = "\(pdfImages.count + 1) page\(pdfImages.isEmpty ? "" : "s"). JPEG pages are embedded without re-encoding; location data is removed."
+        let handler: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard response == .OK, let destination = panel.url else { return }
+            MainActor.assumeIsolated { self?.startPDFExport(to: destination) }
+        }
+        if let window = NSApp.keyWindow {
+            panel.beginSheetModal(for: window, completionHandler: handler)
+        } else {
+            handler(panel.runModal())
+        }
+    }
+
+    private func startPDFExport(to destination: URL) {
+        guard let sourceURL else { return }
+        // The opened image goes in as edited (crop, rotate, compose…);
+        // untouched, it's passed as the file so JPEGs aren't re-encoded.
+        let editedPlan = (hasEdits || composition != nil) ? plan : nil
+        let extras = pdfImages.map { PDFEngine.PageImage(url: $0.url) }
+        let (pageSize, margin, imageQuality) = (pdfPageSize, pdfMargin, pdfImageQuality)
+        let title = sourceURL.deletingPathExtension().lastPathComponent
+        exportState = .running(0)
+        exportTask = Task {
+            do {
+                var first = PDFEngine.PageImage(url: sourceURL)
+                if let editedPlan { first.rendered = try await PDFEngine.renderedPage(sourceURL, plan: editedPlan) }
+                try await PDFEngine.makePDF(
+                    from: [first] + extras, pageSize: pageSize, margin: margin, title: title,
+                    imageQuality: imageQuality, to: destination, overwrite: true
+                ) { fraction in
+                    Task { @MainActor in
+                        guard case .running = self.exportState else { return }
+                        self.exportState = .running(fraction)
+                    }
+                }
+                exportState = .saved(destination)
+            } catch is CancellationError {
+                exportState = .idle
+            } catch {
+                exportState = .failed(String(describing: error))
+            }
+        }
+    }
+
+    var pdfEstimateKey: PDFEstimateKey {
+        PDFEstimateKey(source: sourceURL, pages: pdfImages.map(\.url), pageSize: pdfPageSize, margin: pdfMargin,
+                       quality: pdfImageQuality, request: (hasEdits || composition != nil) ? request : nil)
+    }
+
+    /// Measures the PDF by building it in a temporary folder.
+    func refreshPDFEstimate() async {
+        guard let sourceURL, !isPDFDocument, info != nil else { return }
+        let key = pdfEstimateKey
+        pdfEstimate = (key, nil)
+        do {
+            try await Task.sleep(for: .milliseconds(400))
+            var first = PDFEngine.PageImage(url: sourceURL)
+            if key.request != nil, let plan { first.rendered = try await PDFEngine.renderedPage(sourceURL, plan: plan) }
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("dex-pdf-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: folder) }
+            let output = folder.appendingPathComponent("estimate.pdf")
+            try await PDFEngine.makePDF(from: [first] + key.pages.map { PDFEngine.PageImage(url: $0) },
+                                        pageSize: key.pageSize, margin: key.margin, title: "estimate",
+                                        imageQuality: key.quality, to: output)
+            let bytes = Int64(try output.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
+            if pdfEstimateKey == key { pdfEstimate = (key, bytes) }
+        } catch {}
     }
 
     /// HEIC and other modern formats default to JPEG, the most compatible
@@ -474,3 +702,12 @@ enum ComposeMode: String, CaseIterable, Identifiable {
     }
 }
 
+
+struct PDFEstimateKey: Equatable {
+    let source: URL?
+    let pages: [URL]
+    let pageSize: PDFEngine.PageSize
+    let margin: Double
+    let quality: Double?
+    let request: ConvertRequest?
+}

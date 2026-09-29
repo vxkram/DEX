@@ -130,8 +130,11 @@ public enum PDFEngine {
     /// data (no re-encode), with metadata stripped for privacy; other
     /// formats are stored losslessly. Rotation is applied to the page, not
     /// the pixels, so JPEGs stay untouched even when rotated.
+    /// `imageQuality`: nil stores non-JPEG pages losslessly; a value stores
+    /// them as JPEG at that quality (much smaller PDFs for HEIC/PNG photos).
     public static func makePDF(
         from images: [PageImage], pageSize: PageSize, margin: Double, title: String,
+        imageQuality: Double? = nil,
         to destination: URL, overwrite: Bool = false, progress: (@Sendable (Double) -> Void)? = nil
     ) async throws {
         guard let first = images.first else { throw PDFError.noPages }
@@ -144,7 +147,7 @@ public enum PDFEngine {
                 }
                 for (index, item) in images.enumerated() {
                     try token.check()
-                    let page = try pageContent(item)
+                    let page = try pageContent(item, jpegQuality: imageQuality)
                     let size = page.displaySize
                     var mediaBox = CGRect(origin: .zero, size: pageSize.points.map {
                         // Paper follows the image: landscape for wide images.
@@ -164,6 +167,21 @@ public enum PDFEngine {
                 }
                 context.closePDF()
             }
+        }
+    }
+
+    /// The image with a plan's edits applied (crop, rotate, composition,
+    /// resize), for use as a PDF page.
+    public static func renderedPage(_ source: URL, plan: ConversionPlan) async throws -> CGImageBox {
+        try await MediaWork.run { token in
+            guard let imageSource = CGImageSourceCreateWithURL(source as CFURL, nil) else {
+                throw ConvertError.unreadable(source.lastPathComponent)
+            }
+            if let composition = plan.request.composition, !composition.isEmpty {
+                return CGImageBox(try Compositor.render(imageSource, plan: plan, name: source.lastPathComponent, token: token))
+            }
+            let decoded = try ImageEngine.decodedFrame(imageSource, index: 0, name: source.lastPathComponent)
+            return CGImageBox(try ImageEngine.geometryApplied(to: decoded, plan: plan))
         }
     }
 
@@ -235,8 +253,11 @@ public enum PDFEngine {
         }
     }
 
-    private static func pageContent(_ item: PageImage) throws -> PageContent {
-        if let rendered = item.rendered { return PageContent(image: rendered.image, orientation: .identity) }
+    private static func pageContent(_ item: PageImage, jpegQuality: Double?) throws -> PageContent {
+        if let rendered = item.rendered {
+            return PageContent(image: try jpegQuality.map { try asJPEG(rendered.image, quality: $0) } ?? rendered.image,
+                               orientation: .identity)
+        }
         guard let source = CGImageSourceCreateWithURL(item.url as CFURL, nil) else {
             throw ConvertError.unreadable(item.url.lastPathComponent)
         }
@@ -251,7 +272,25 @@ public enum PDFEngine {
            let jpeg = CGImage(jpegDataProviderSource: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent) {
             return PageContent(image: jpeg, orientation: orientation)
         }
-        return PageContent(image: try ImageEngine.decodedFrame(source, index: 0, name: item.url.lastPathComponent), orientation: orientation)
+        let decoded = try ImageEngine.decodedFrame(source, index: 0, name: item.url.lastPathComponent)
+        return PageContent(image: try jpegQuality.map { try asJPEG(decoded, quality: $0) } ?? decoded, orientation: orientation)
+    }
+
+    /// Re-encodes as JPEG in memory and returns an image backed by that
+    /// JPEG data, so the PDF embeds it directly (DCTDecode).
+    private static func asJPEG(_ image: CGImage, quality: Double) throws -> CGImage {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data as CFMutableData, ImageFormat.jpeg.typeIdentifier as CFString, 1, nil) else {
+            throw ConvertError.encodeFailed(.jpeg)
+        }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        guard CGImageDestinationFinalize(destination),
+              let provider = CGDataProvider(data: data as CFData),
+              let jpeg = CGImage(jpegDataProviderSource: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
+        else {
+            throw ConvertError.encodeFailed(.jpeg)
+        }
+        return jpeg
     }
 
     /// Draws with the orientation as a transform: rotation happens in the

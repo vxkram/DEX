@@ -61,3 +61,13 @@ Every plan that promises HDR is verified after writing: an output missing its ga
 | **A lower quality on a lossy format re-encodes even into the same format** | Previously JPEG → JPEG at quality 70 was a plain copy (bug) |
 | **Size estimates** come from running the real conversion into a temporary folder (debounced, cancelled when settings change) | Every panel shows the true output size before export, e.g. "≈ 2.3 MB · 4% smaller" |
 | **Removing metadata through ImageIO adds a ~2–3 KB XMP packet**, and a jpegtran repack can be less efficient than an already-optimised source. Together they made a 36 KB JPEG grow to 39 KB | JPEG "remove all" is a marker-level strip: tables and scans are copied byte for byte; only EXIF/XMP, vendor APPs, comments, MPF and trailing data are dropped. ICC, JFIF and Adobe are kept, plus a 32-byte orientation tag if needed. A repack is used only if it is smaller. Real file: 36,279 → 36,161 bytes |
+
+## PDF (added 2026-09-29)
+
+| Decision | Why |
+|---|---|
+| **JPEG pages are embedded as their original compressed data:** `CGImage(jpegDataProviderSource:)` → DCTDecode, after a marker-level metadata strip | No re-encode (the scan data is byte-identical inside the PDF, tested). The strip keeps EXIF/GPS out of the PDF |
+| **Orientation is applied as a page transform**, not to the pixels | Rotated iPhone JPEGs stay untouched and come out upright |
+| **Non-JPEG pages are lossless (Flate) by default**, with an optional "Smaller" mode (JPEG 90) | PDFs can't hold HEIC/WebP. A lossless 12 MP HEIC page makes about a 17 MB PDF, and the panel measures the real size live |
+| **Pages are rendered with `CGPDFPage` on white** at 72–600 DPI | Rotation- and crop-box-aware. Output files are named `<name>-page-01.<ext>` and never overwrite existing ones |
+| **Password-protected PDFs** prompt for the password; the unlock is kept only in memory | |
