@@ -16,8 +16,6 @@ struct ResultSection: View {
                         .font(.technical)
                         .help("Change the format in Convert (⌘1).")
                     EstimateLine(document: document)
-                    // Compress shows this at the top of its panel instead.
-                    if document.tool != .compress { SizeIncreaseNote(document: document) }
                     PlanSummary(plan: plan, document: document)
                 case .failure(let error):
                     Label(String(describing: error), systemImage: "xmark.octagon")
@@ -210,6 +208,10 @@ struct EstimateLine: View {
                          : "\(Int((change.magnitude * 100).rounded()))% \(change < 0 ? "smaller" : "larger")")
                         .font(.technicalSmall)
                         .foregroundStyle(change > 0.005 ? .orange : change < -0.005 ? .green : .secondary)
+                    // Compress explains at the top of its panel instead.
+                    if document.tool != .compress, let reason = SizeIncreaseReason(document: document) {
+                        WhyButton(reason: reason, document: document)
+                    }
                 }
             } else if let failure = document.currentEstimate?.failure {
                 Image(systemName: "questionmark.circle").foregroundStyle(.secondary)
@@ -241,29 +243,51 @@ struct Explanation: View {
     }
 }
 
-/// When the result is bigger than the original, says why in plain words
-/// and offers the one-click way back, if there is one.
+/// When the result is bigger than the original: a compact "Why?" that
+/// opens the plain-words reason and the one-click fix, if there is one.
 struct SizeIncreaseNote: View {
     let document: ImageDocument
 
     var body: some View {
         if let reason = SizeIncreaseReason(document: document) {
-            VStack(alignment: .leading, spacing: 8) {
-                Label(reason.explanation, systemImage: "arrow.up.right.circle.fill")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let fix = reason.fix {
-                    Button(fix.title) { fix.apply(document) }
-                        .buttonStyle(.link)
-                        .tint(Theme.ember)
-                        .font(.caption.weight(.semibold))
-                }
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up.right.circle.fill").foregroundStyle(.orange)
+                Text(verbatim: "\(reason.percent)% larger").font(.technicalSmall).foregroundStyle(.orange)
+                WhyButton(reason: reason, document: document)
             }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.orange.opacity(0.1)))
         }
+    }
+}
+
+/// "Why?" → a popover with the reason and the fix.
+struct WhyButton: View {
+    let reason: SizeIncreaseReason
+    let document: ImageDocument
+    @State private var isShowingReason = false
+
+    var body: some View {
+        Button("Why?") { isShowingReason = true }
+            .buttonStyle(.link)
+            .tint(Theme.ember)
+            .font(.caption.weight(.semibold))
+            .focusable(false)
+            .popover(isPresented: $isShowingReason, arrowEdge: .bottom) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(reason.explanation)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let fix = reason.fix {
+                        Button(fix.title) {
+                            fix.apply(document)
+                            isShowingReason = false
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(Theme.ember)
+                    }
+                }
+                .padding(14)
+                .frame(width: 280)
+            }
     }
 }
 
@@ -276,6 +300,7 @@ struct SizeIncreaseReason {
 
     let explanation: String
     let fix: Fix?
+    let percent: Int
 
     init?(document: ImageDocument) {
         guard let info = document.info, let source = info.format, let plan = document.plan,
@@ -283,6 +308,7 @@ struct SizeIncreaseReason {
         else { return nil }
         let target = plan.request.target
         let percent = Int((Double(bytes - info.fileSize) / Double(info.fileSize) * 100).rounded())
+        self.percent = percent
         let keepFormat: ImageFormat? = document.writableFormats.contains(source) ? source : (source == .heif ? .heic : nil)
         let keep = keepFormat.flatMap { format in
             format == target ? nil : Fix(title: "Keep it as \(format.displayName)") { $0.target = format }
@@ -290,22 +316,22 @@ struct SizeIncreaseReason {
         let efficient: Set<ImageFormat> = [.heic, .heif, .avif, .webp]
 
         if plan.request.composition.map({ !$0.isEmpty }) ?? false {
-            explanation = "\(percent)% larger because several images are combined into one."
+            explanation = "Several images are combined into one, so there is simply more picture to store."
             fix = nil
         } else if target != source && target.supportsLossless && plan.lossyQuality == nil {
-            explanation = "\(percent)% larger: \(target.displayName) stores every pixel exactly (lossless), which takes far more space than \(source.displayName)'s compression. Nothing is gained in quality over the original."
+            explanation = "\(target.displayName) stores every pixel exactly (lossless), which takes far more space than \(source.displayName)'s compression. It won't look better than the original."
             fix = keep
         } else if target != source && efficient.contains(source) && !efficient.contains(target) {
-            explanation = "\(percent)% larger: \(source.displayName) is a newer format that compresses about twice as well as \(target.displayName), so the same picture needs more bytes."
+            explanation = "\(source.displayName) is a newer format that compresses about twice as well as \(target.displayName), so the same picture needs more bytes."
             fix = keep
         } else if target != source {
-            explanation = "\(percent)% larger: \(target.displayName) is less efficient than \(source.displayName) for this image."
+            explanation = "\(target.displayName) is less efficient than \(source.displayName) for this image."
             fix = keep
         } else if let quality = plan.lossyQuality {
-            explanation = "\(percent)% larger: the original was saved at a lower quality than \(Int(quality * 100)). Re-encoding can't restore detail, so lower the quality to get a smaller file."
+            explanation = "The original was saved at a lower quality than \(Int(quality * 100)). Re-encoding can't restore detail, so lower the quality for a smaller file."
             fix = nil
         } else {
-            explanation = "\(percent)% larger than the original after re-encoding."
+            explanation = "Re-encoding produced a slightly larger file than the original."
             fix = nil
         }
     }
