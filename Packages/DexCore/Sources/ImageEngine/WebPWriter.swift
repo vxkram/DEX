@@ -20,14 +20,9 @@ enum WebPWriter {
         token: CancellationToken,
         progress: (@Sendable (Double) -> Void)?
     ) throws {
-        let image: CGImage
-        if plan.appliesOrientation {
-            image = try ImageEngine.uprightImage(source, index: 0, name: name)
-        } else if let decoded = CGImageSourceCreateImageAtIndex(source, 0, nil) {
-            image = decoded
-        } else {
-            throw ConvertError.unreadable(name)
-        }
+        let image = try ImageEngine.geometryApplied(
+            to: ImageEngine.decodedFrame(source, index: 0, name: name), plan: plan
+        )
         try token.check()
 
         let colorSpace = rgbColorSpace(of: image)

@@ -32,7 +32,7 @@ enum Tool: String, CaseIterable, Identifiable {
         }
     }
 
-    var isAvailable: Bool { self == .convert || self == .info }
+    var isAvailable: Bool { [.convert, .crop, .resize, .info].contains(self) }
 }
 
 /// The open-file layout: preview and dock on the left, the chosen tool's
@@ -44,7 +44,7 @@ struct Workspace: View {
     var body: some View {
         HStack(spacing: 18) {
             VStack(spacing: 16) {
-                PreviewCanvas(document: document)
+                PreviewCanvas(document: document, isCropping: tool == .crop)
                     .overlay(alignment: .bottom) {
                         if tool != .convert { ExportToast(document: document) }
                     }
@@ -80,7 +80,11 @@ private struct TopBar: View {
                     .truncationMode(.middle)
             }
             if let info = document.info {
-                Text(verbatim: "\(info.displayWidth) × \(info.displayHeight)  ·  \(ByteCountFormatter.string(fromByteCount: info.fileSize, countStyle: .file))")
+                let output = document.plan?.outputDisplaySize
+                let edited = output.map { $0 != info.displaySize } ?? false
+                Text(verbatim: "\(info.displayWidth) × \(info.displayHeight)"
+                     + (edited ? " → \(output!.width) × \(output!.height)" : "")
+                     + "  ·  \(ByteCountFormatter.string(fromByteCount: info.fileSize, countStyle: .file))")
                     .font(.technicalSmall)
                     .foregroundStyle(.secondary)
             }
@@ -111,17 +115,12 @@ private struct TopBar: View {
 
 private struct PreviewCanvas: View {
     let document: ImageDocument
+    let isCropping: Bool
 
     var body: some View {
         ZStack {
-            if let preview = document.preview {
-                Image(decorative: preview.cgImage, scale: 1)
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fit)
-                    .allowedDynamicRange(preview.isHDR ? .high : .standard)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .shadow(color: .black.opacity(0.5), radius: 24, y: 10)
+            if document.preview != nil {
+                ImageStage(document: document, isCropping: isCropping)
             } else if let error = document.loadError {
                 ContentUnavailableView("Can't open this file", systemImage: "exclamationmark.triangle", description: Text(error))
                     .padding(30)
@@ -255,6 +254,8 @@ private struct ToolPanel: View {
 
             switch tool {
             case .convert: ConvertPanel(document: document)
+            case .crop: CropPanel(document: document)
+            case .resize: ResizePanel(document: document)
             default: InfoPanel(document: document)
             }
         }

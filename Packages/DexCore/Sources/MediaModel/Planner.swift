@@ -26,7 +26,7 @@ public enum Planner {
         }
 
         var plan = baselinePlan(source, sourceFormat: sourceFormat, request: request)
-        plan.verdict = plan.strategy == .reencode
+        plan.verdict = plan.strategy == .reencode || plan.notes.contains(where: \.isLoss)
             ? (plan.notes.contains(where: \.isLoss) ? .lossy : .lossless)
             : .noReencode
         if plan.verdict == .lossy {
@@ -47,37 +47,80 @@ public enum Planner {
         request: ConvertRequest
     ) -> ConversionPlan {
         let target = request.target
+        let geometry = request.geometry
+
+        // Everything the user sees is in display space: the file's own
+        // orientation followed by their rotate/flip.
+        let total = Orientation(exif: source.orientation).followed(by: geometry.orientation)
+        let displaySize = total.apply(to: source.storedSize)
+        let fullFrame = PixelRect(x: 0, y: 0, width: displaySize.width, height: displaySize.height)
+        let crop = geometry.crop?.clamped(to: displaySize).flatMap { $0 == fullFrame ? nil : $0 }
+        let croppedSize = crop?.size ?? displaySize
+        let resize = geometry.resize.flatMap { $0 == croppedSize || $0.width < 1 || $0.height < 1 ? nil : $0 }
+        let changesPixels = crop != nil || resize != nil
+
         var strategy = ConversionStrategy.reencode
         var losses: [QualityNote] = []
+        var info: [QualityNote] = []
+        var outputOrientation = source.orientation
+        var bakedOrientation = 1
+        var pixelCrop: PixelRect?
+        var displayCrop = crop
+        var outputSize = source.storedSize
+        var preservesHDR = source.hasHDRGainMap && target.supportsGainMap
 
-        if sourceFormat == target {
-            let changesMetadata = request.metadata == .removeAll
+        // 1. Same format without new pixels: copy, or rewrite metadata
+        //    (including a new orientation tag for rotate/flip).
+        if sourceFormat == target && !changesPixels {
+            let changesMetadata = !geometry.orientation.isIdentity
+                || request.metadata == .removeAll
                 || (request.metadata == .removeLocation && source.hasGPS)
             if !changesMetadata {
                 strategy = .copyFile
-            } else if target.supportsLosslessMetadataEdit {
+            } else if target.supportsLosslessMetadataEdit && target.supportsOrientationTag {
                 strategy = .rewriteMetadata
+                outputOrientation = total.exif
             } else if !target.reencodesLosslessly {
                 losses.append(.metadataEditRequiresReencode(target))
             }
         }
 
+        // 2. JPEG crop on the compressed data: no decode, no loss.
+        if strategy == .reencode, sourceFormat == .jpeg, target == .jpeg, let crop, resize == nil,
+           !geometry.exactCrop, let block = source.jpegBlockSize {
+            let stored = snapped(total.inverse.apply(to: crop, in: displaySize), to: block, within: source.storedSize)
+            let shown = total.apply(to: stored, in: source.storedSize)
+            strategy = .losslessJPEGCrop
+            pixelCrop = stored
+            displayCrop = shown
+            outputSize = stored.size
+            outputOrientation = total.exif
+            preservesHDR = false
+            if shown != crop { info.append(.cropSnapped(to: shown)) }
+            if source.hasHDRGainMap { losses.append(.hdrNotKeptByLosslessCrop) }
+        }
+
         var frames = source.frameCount
-        var width = source.pixelWidth
-        var height = source.pixelHeight
-        var info: [QualityNote] = []
-        var appliesOrientation = false
         var lossyQuality: Double?
         if strategy == .reencode {
-            if source.orientation != 1 && !target.supportsOrientationTag {
-                appliesOrientation = true
-                (width, height) = (source.displayWidth, source.displayHeight)
-                info.append(.orientationApplied)
+            let formatCantRotate = !total.isIdentity && !target.supportsOrientationTag
+            if changesPixels || formatCantRotate {
+                // Work upright: bake the orientation, then crop and resize.
+                bakedOrientation = total.exif
+                outputOrientation = 1
+                pixelCrop = crop
+                outputSize = resize ?? croppedSize
+                if formatCantRotate && !changesPixels { info.append(.orientationApplied) }
+                if let resize { losses.append(.resampled(from: croppedSize, to: resize)) }
+            } else {
+                outputOrientation = total.exif
             }
             let lossyWebP = target == .webp && request.quality != .maximum
             if (!target.supportsLossless && target != .gif) || lossyWebP {
                 lossyQuality = request.quality.lossyValue
-                losses.append(.lossyEncode(target, quality: request.quality.lossyValue))
+                // After the reason a re-encode is needed, before everything else.
+                let position = losses.first == .metadataEditRequiresReencode(target) ? 1 : 0
+                losses.insert(.lossyEncode(target, quality: request.quality.lossyValue), at: position)
             }
             if target == .gif && sourceFormat != .gif {
                 losses.append(.paletteLimited)
@@ -102,6 +145,7 @@ public enum Planner {
                 losses.append(.noAdditionalLoss)
             }
         }
+        if strategy == .losslessJPEGCrop { frames = 1 }
         let notes = losses + info + metadataNotes(source, request.metadata)
 
         return ConversionPlan(
@@ -111,12 +155,25 @@ public enum Planner {
             notes: notes,
             lossyQuality: lossyQuality,
             losslessAlternative: nil,
-            preservesHDR: source.hasHDRGainMap && target.supportsGainMap,
-            appliesOrientation: appliesOrientation,
-            expectedWidth: width,
-            expectedHeight: height,
+            preservesHDR: preservesHDR,
+            bakedOrientation: bakedOrientation,
+            outputOrientation: outputOrientation,
+            pixelCrop: pixelCrop,
+            resize: resize,
+            displayCrop: displayCrop,
+            expectedWidth: outputSize.width,
+            expectedHeight: outputSize.height,
             expectedFrameCount: frames
         )
+    }
+
+    /// Moves a crop's top-left corner back onto the JPEG block grid, keeping
+    /// its bottom-right corner, as libjpeg-turbo's lossless crop requires.
+    static func snapped(_ rect: PixelRect, to block: PixelSize, within size: PixelSize) -> PixelRect {
+        let x = rect.x - rect.x % block.width
+        let y = rect.y - rect.y % block.height
+        let snapped = PixelRect(x: x, y: y, width: rect.maxX - x, height: rect.maxY - y)
+        return snapped.clamped(to: size) ?? snapped
     }
 
     private static func metadataNotes(_ source: MediaInfo, _ policy: MetadataPolicy) -> [QualityNote] {

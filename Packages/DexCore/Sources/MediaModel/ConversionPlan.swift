@@ -28,11 +28,18 @@ public struct ConvertRequest: Codable, Sendable, Equatable {
     public var target: ImageFormat
     public var quality: QualityPreference
     public var metadata: MetadataPolicy
+    public var geometry: Geometry
 
-    public init(target: ImageFormat, quality: QualityPreference = .maximum, metadata: MetadataPolicy = .removeLocation) {
+    public init(
+        target: ImageFormat,
+        quality: QualityPreference = .maximum,
+        metadata: MetadataPolicy = .removeLocation,
+        geometry: Geometry = .none
+    ) {
         self.target = target
         self.quality = quality
         self.metadata = metadata
+        self.geometry = geometry
     }
 }
 
@@ -58,6 +65,9 @@ public enum ConversionStrategy: String, Codable, Sendable {
     case copyFile
     /// Rewrite metadata around the original coded image data.
     case rewriteMetadata
+    /// Crop JPEG coefficients without decoding (libjpeg-turbo), then
+    /// rewrite metadata.
+    case losslessJPEGCrop
     /// Decode and encode.
     case reencode
 }
@@ -72,15 +82,18 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
     case hdrDropped(to: ImageFormat)
     case colourModelConverted(from: String)
     case metadataEditRequiresReencode(ImageFormat)
+    case resampled(from: PixelSize, to: PixelSize)
+    case hdrNotKeptByLosslessCrop
     // Information
     case noAdditionalLoss
     case orientationApplied
+    case cropSnapped(to: PixelRect)
     case locationRemoved
     case allMetadataRemoved
 
     public var isLoss: Bool {
         switch self {
-        case .noAdditionalLoss, .orientationApplied, .locationRemoved, .allMetadataRemoved: false
+        case .noAdditionalLoss, .orientationApplied, .cropSnapped, .locationRemoved, .allMetadataRemoved: false
         default: true
         }
     }
@@ -105,6 +118,12 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
             "\(format.displayName) metadata can't be edited without re-encoding the image"
         case .noAdditionalLoss:
             "No additional loss. The file will likely be larger"
+        case .resampled(let from, let to):
+            "Resized from \(from) to \(to): resampling creates new pixels"
+        case .hdrNotKeptByLosslessCrop:
+            "HDR gain map can't be kept by a lossless JPEG crop yet"
+        case .cropSnapped(let rect):
+            "Crop adjusted to \(rect.size) so it stays lossless (JPEG crops start on 8/16-pixel blocks)"
         case .orientationApplied:
             "Rotation will be applied to the pixels, because this format can't store orientation"
         case .locationRemoved:
@@ -127,12 +146,27 @@ public struct ConversionPlan: Codable, Sendable, Equatable {
     public var losslessAlternative: ImageFormat?
     /// The output carries the source's HDR gain map. Checked after writing.
     public var preservesHDR: Bool
-    /// Rotate/flip the pixels upright instead of storing an orientation tag.
-    public var appliesOrientation: Bool
+    /// EXIF orientation applied to the pixels (1 = none).
+    public var bakedOrientation: Int
+    /// Orientation tag the output must carry. Checked after writing.
+    public var outputOrientation: Int
+    /// Crop in the space the engine works in: stored pixels for
+    /// `.losslessJPEGCrop`, pixels after `bakedOrientation` for `.reencode`.
+    public var pixelCrop: PixelRect?
+    /// Final pixel size after cropping, when resampling.
+    public var resize: PixelSize?
+    /// The crop as the user will see it, after any lossless snapping.
+    public var displayCrop: PixelRect?
     /// Output geometry as stored. Checked after writing.
     public var expectedWidth: Int
     public var expectedHeight: Int
     public var expectedFrameCount: Int
+
+    public var appliesOrientation: Bool { bakedOrientation != 1 }
+    /// The displayed size of the result.
+    public var outputDisplaySize: PixelSize {
+        Orientation(exif: outputOrientation).apply(to: PixelSize(width: expectedWidth, height: expectedHeight))
+    }
 }
 
 public enum PlanError: Error, Equatable, CustomStringConvertible {

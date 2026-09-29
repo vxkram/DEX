@@ -26,6 +26,9 @@ final class ImageDocument {
     var target: ImageFormat = .jpeg
     var quality: QualityPreference = .maximum
     var metadata: MetadataPolicy = .removeLocation
+    /// Rotate/flip, crop and resize, all in display space.
+    var geometry = Geometry()
+    var cropAspect: CropAspect = .free
     var exportState: ExportState = .idle
 
     /// Formats this Mac can write, in display order.
@@ -42,8 +45,28 @@ final class ImageDocument {
     // MARK: - Derived state
 
     var request: ConvertRequest {
-        ConvertRequest(target: target, quality: quality, metadata: metadata)
+        ConvertRequest(target: target, quality: quality, metadata: metadata, geometry: geometry)
     }
+
+    /// Size as shown after the file's orientation and the user's rotate/flip.
+    var displaySize: PixelSize? {
+        guard let info else { return nil }
+        return Orientation(exif: info.orientation).followed(by: geometry.orientation).apply(to: info.storedSize)
+    }
+
+    /// The crop that will actually be written (JPEG crops may snap).
+    var effectiveCrop: PixelRect? { plan?.displayCrop ?? geometry.crop }
+
+    /// Size after cropping, before resizing.
+    var croppedSize: PixelSize? { effectiveCrop?.size ?? displaySize }
+
+    var hasEdits: Bool { !geometry.isIdentity }
+
+    func rotateClockwise() { geometry.rotateClockwise(); geometry.resize = nil }
+    func rotateCounterclockwise() { geometry.rotateCounterclockwise(); geometry.resize = nil }
+    func flipHorizontally() { geometry.flipHorizontally(); geometry.resize = nil }
+    func flipVertically() { geometry.flipVertically(); geometry.resize = nil }
+    func resetGeometry() { geometry = Geometry() }
 
     /// Recomputed live as settings change. Planning is pure and cheap.
     var planResult: Result<ConversionPlan, any Error>? {
@@ -78,6 +101,8 @@ final class ImageDocument {
         sourceURL = url
         info = nil
         preview = nil
+        geometry = Geometry()
+        cropAspect = .free
         loadError = nil
         exportState = .idle
         isLoading = true

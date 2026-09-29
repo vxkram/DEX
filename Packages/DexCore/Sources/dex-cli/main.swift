@@ -18,6 +18,11 @@ let usage = """
       --out <path>                 Output file (default: next to the original, never overwriting it)
       --quality max|<0-1>          Lossy encoder quality (default: max = 0.95)
       --metadata <policy>          keep | no-location (default) | none
+      --rotate cw|ccw|180          Rotate what is displayed
+      --flip h|v                   Mirror horizontally or vertically
+      --crop WxH+X+Y               Crop in displayed pixels (after rotate/flip)
+      --exact-crop                 Crop exactly, even if a lossless JPEG crop would snap
+      --resize WxH                 Resize after cropping (resampling is lossy)
       --allow-lossy                Accept a conversion that loses information
       --overwrite                  Replace an existing output file (never the original)
       --dry-run                    Show the plan without writing anything
@@ -109,6 +114,7 @@ struct ConvertOptions {
     var output: String?
     var quality = QualityPreference.maximum
     var metadata = MetadataPolicy.removeLocation
+    var geometry = Geometry()
     var allowLossy = false
     var overwrite = false
     var dryRun = false
@@ -149,6 +155,28 @@ func parseConvertOptions(_ arguments: [String]) throws -> ConvertOptions {
             case "none": options.metadata = .removeAll
             case let other: throw UsageError(description: "unknown metadata policy '\(other)'")
             }
+        case "--rotate":
+            switch try value(for: argument) {
+            case "cw": options.geometry.rotateClockwise()
+            case "ccw": options.geometry.rotateCounterclockwise()
+            case "180": options.geometry.rotateClockwise(); options.geometry.rotateClockwise()
+            case let other: throw UsageError(description: "unknown rotation '\(other)'")
+            }
+        case "--flip":
+            switch try value(for: argument) {
+            case "h": options.geometry.flipHorizontally()
+            case "v": options.geometry.flipVertically()
+            case let other: throw UsageError(description: "unknown flip '\(other)'")
+            }
+        case "--crop":
+            let parts = try value(for: argument).split(whereSeparator: { "x+".contains($0) }).compactMap { Int($0) }
+            guard parts.count == 4 else { throw UsageError(description: "--crop must look like 800x600+10+20") }
+            options.geometry.crop = PixelRect(x: parts[2], y: parts[3], width: parts[0], height: parts[1])
+        case "--exact-crop": options.geometry.exactCrop = true
+        case "--resize":
+            let parts = try value(for: argument).split(separator: "x").compactMap { Int($0) }
+            guard parts.count == 2 else { throw UsageError(description: "--resize must look like 1920x1080") }
+            options.geometry.resize = PixelSize(width: parts[0], height: parts[1])
         case "--allow-lossy": options.allowLossy = true
         case "--overwrite": options.overwrite = true
         case "--dry-run": options.dryRun = true
@@ -173,13 +201,15 @@ func convert(_ arguments: [String]) async -> ExitCode {
         return .usage
     }
     let source = URL(fileURLWithPath: (options.input! as NSString).expandingTildeInPath)
-    let request = ConvertRequest(target: options.target!, quality: options.quality, metadata: options.metadata)
+    let request = ConvertRequest(
+        target: options.target!, quality: options.quality, metadata: options.metadata, geometry: options.geometry
+    )
 
     do {
         let (_, plan) = try ImageEngine.plan(source, request)
         let destination = options.output.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
             ?? SafeOutput.defaultDestination(for: source, pathExtension: request.target.preferredFileExtension)
-        print("\(source.lastPathComponent) → \(destination.lastPathComponent)")
+        print("\(source.lastPathComponent) → \(destination.lastPathComponent)  (\(plan.outputDisplaySize))")
         print(describe(plan))
 
         if options.dryRun { return .ok }

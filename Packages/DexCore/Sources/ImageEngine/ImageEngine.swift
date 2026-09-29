@@ -66,7 +66,10 @@ public enum ImageEngine {
             hasAlpha: properties[kCGImagePropertyHasAlpha] as? Bool ?? false,
             hasHDRGainMap: hasGainMap(source),
             frameCount: frameCount,
-            hasGPS: properties[kCGImagePropertyGPSDictionary] != nil
+            hasGPS: properties[kCGImagePropertyGPSDictionary] != nil,
+            jpegBlockSize: typeIdentifier == ImageFormat.jpeg.typeIdentifier
+                ? (try? Data(contentsOf: url, options: .alwaysMapped)).flatMap(JPEGLossless.info)?.blockSize
+                : nil
         )
     }
 

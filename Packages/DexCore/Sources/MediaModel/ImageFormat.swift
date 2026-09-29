@@ -93,10 +93,14 @@ public enum ImageFormat: String, Codable, Sendable, CaseIterable {
     }
 
     /// Whether the encoder keeps an EXIF-style orientation tag. ImageIO's
-    /// AVIF encoder silently drops it (macOS 27), and browsers ignore
-    /// orientation in WebP, so for both the rotation goes into the pixels.
+    /// AVIF encoder silently drops it (macOS 27), browsers ignore
+    /// orientation in WebP, and GIF has none, so for these the rotation goes
+    /// into the pixels.
     public var supportsOrientationTag: Bool {
-        self != .avif && self != .webp
+        switch self {
+        case .jpeg, .png, .heic, .heif, .tiff: true
+        case .avif, .webp, .gif: false
+        }
     }
 
     /// Whether the format only stores RGB, so grayscale and CMYK images must

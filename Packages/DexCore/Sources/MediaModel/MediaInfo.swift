@@ -24,6 +24,8 @@ public struct MediaInfo: Codable, Sendable, Equatable {
     public var hasHDRGainMap: Bool
     public var frameCount: Int
     public var hasGPS: Bool
+    /// JPEG only: the block (iMCU) size lossless crops must align to.
+    public var jpegBlockSize: PixelSize?
 
     public init(
         fileName: String,
@@ -39,7 +41,8 @@ public struct MediaInfo: Codable, Sendable, Equatable {
         hasAlpha: Bool = false,
         hasHDRGainMap: Bool = false,
         frameCount: Int = 1,
-        hasGPS: Bool = false
+        hasGPS: Bool = false,
+        jpegBlockSize: PixelSize? = nil
     ) {
         self.fileName = fileName
         self.fileSize = fileSize
@@ -55,7 +58,11 @@ public struct MediaInfo: Codable, Sendable, Equatable {
         self.hasHDRGainMap = hasHDRGainMap
         self.frameCount = frameCount
         self.hasGPS = hasGPS
+        self.jpegBlockSize = jpegBlockSize
     }
+
+    public var storedSize: PixelSize { PixelSize(width: pixelWidth, height: pixelHeight) }
+    public var displaySize: PixelSize { PixelSize(width: displayWidth, height: displayHeight) }
 
     /// Orientations 5–8 rotate by 90°, swapping width and height on display.
     public var swapsAxes: Bool { (5...8).contains(orientation) }

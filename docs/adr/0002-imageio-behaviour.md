@@ -37,3 +37,15 @@ Every plan that promises HDR is verified after writing: an output missing its ga
 - **WebP has no orientation tag that browsers honour**, so rotation is applied to the pixels, and stale `tiff:Orientation`/pixel-dimension tags are removed from the XMP.
 - **Metadata** is written as an XMP chunk filtered by the policy. A test checks that keep-all carries GPS, so the path really works, and that the removal policies strip it. Colour profiles other than sRGB go into an ICCP chunk.
 - **WebP is RGB-only.** Grayscale and CMYK are converted to sRGB, and the plan discloses it (`colourModelConverted`).
+
+## Geometry: rotate/flip, crop, resize (added 2026-09-29)
+
+| Decision | Why |
+|---|---|
+| **Rotate/flip** of JPEG, HEIC and TIFF only rewrites the orientation, so nothing is re-encoded | Lossless. Every mainstream viewer and browser honours EXIF orientation |
+| **HEIC stores rotation in `irot`/`imir`.** Only `kCGImageDestinationOrientation` updates them, and that option can't be combined with `kCGImageDestinationMetadata` | Two lossless `CopyImageSource` passes: orientation into memory first, then metadata |
+| **Lossless JPEG crop** with libjpeg-turbo `transupp` in stored-pixel space, followed by an orientation tag | No decoding. The top-left corner snaps to the iMCU grid (8 or 16 px, read from the file) and the plan reports it (`cropSnapped`). Decoded pixels match the original region away from the new edges (tested), including for rotated photos |
+| The transform copies only ICC APP2 markers, never MPF | MPF would point to a gain map the crop doesn't carry. The lossless-crop plan discloses `hdrNotKeptByLosslessCrop`; "Exact pixels" re-encodes and keeps HDR |
+| **Other formats:** orientation is an exact byte shuffle (`RawBitmap.oriented`) and crop uses `CGImage.cropping` | Straight alpha and 16-bit stay exact, so PNG/TIFF/lossless WebP output is bit-identical to the region (tested) |
+| **Resize** uses vImage Lanczos (`kvImageHighQualityResampling`) in the image's own depth and colour space | Always disclosed as `resampled`. It is never offered as lossless, and the UI refuses to enlarge unless asked |
+| **HDR gain maps** get the same orientation, a crop scaled to their resolution, and a proportional resize | HDR survives HEIC/JPEG/AVIF re-encodes with geometry (tested) |
