@@ -1,31 +1,61 @@
+<p align="center"><img src="design/AppIcon-1024.png" width="128" alt="DEX icon"></p>
+
 # DEX
 
-A native macOS media utility: drop a file, choose an action, export. Lossless whenever physically possible, never silently lossy.
+**Take any image and quickly turn it into what you need.** DEX is a small (about 2 MB), native Mac app for converting, cropping, compressing, combining images and working with PDFs. It keeps quality whenever that's possible and tells you plainly when it isn't.
 
-Status: **Phase 1**. The engine and CLI can inspect and convert JPEG, PNG, HEIC, AVIF, TIFF and GIF with a lossless-first planner. The app window (floating-glass UI) converts between all of them plus WebP, and crops, rotates and resizes, losslessly where the format allows. See [`docs/PLAN.md`](docs/PLAN.md).
+## What it does
+
+| Tool | What you can do |
+|---|---|
+| **Convert** | JPEG, PNG, HEIC, WebP, AVIF, TIFF, GIF, in any direction. HDR photos stay HDR where the format allows. Location data is removed by default |
+| **Crop** | Crop, rotate and flip, with aspect presets and a pixel-level zoom while you drag. JPEG crops are lossless |
+| **Compress** | Lossless or smaller-file compression, smaller dimensions (4K / web / social), and the real resulting size shown before you save |
+| **Compose** | Put images on top of each other (logos, watermarks) or join them side by side, stacked or in a grid, in any mix of formats |
+| **PDF** | Make PDFs from images; turn PDF pages into images; rearrange, rotate, delete, extract, merge, split, add text or images to, and compress PDFs |
+
+You can also right-click images in Finder: **Services → DEX ▸ Convert to JPEG / PNG / HEIC / WebP, Combine into PDF**.
 
 ## Requirements
-- macOS 26+ on Apple Silicon
-- Swift 6.2+ (Command Line Tools are enough for the package; **full Xcode** is required for the app target)
+- A Mac with Apple Silicon (M1 or newer)
+- macOS 26 or later
 
-## Layout
-```
-Packages/DexCore/     SwiftPM package: engine + CLI + tests (no UI)
-  Sources/MediaModel/     Value types and quality rules (Foundation only)
-  Sources/JobSystem/      Safe output (temp + atomic move) and the media work queue
-  Sources/ImageEngine/    ImageIO-backed image processing
-  Sources/dex-cli/    `dex` command-line tool
-docs/                     Plan, original brief, architecture decision records (see adr/0002 for measured ImageIO quirks)
-```
+## Install
 
-## Common tasks
-```sh
-make test                                   # run all tests
-make formats                                # which image formats this Mac can read/write
-make run                                    # build and launch the app
-scripts/make-app-icon.sh my-icon-1024.png   # replace the app icon (1024×1024 PNG)
-make cli ARGS="inspect ~/Pictures/a.heic"   # inspect a file (add --json for machine output)
-make cli ARGS="convert a.heic --to png"      # lossless: runs straight away
-make cli ARGS="convert a.heic --to jpeg"     # lossy: explains what's lost and waits for --allow-lossy
-make cli ARGS="convert a.heic --to jpeg --dry-run"  # show the plan only
-```
+### Option A: download the app (no Xcode needed)
+1. Download **DEX.zip** (ask the owner for it, or get it from this repository's Releases page if there is one).
+2. Double-click the zip, then drag **DEX.app** into your **Applications** folder.
+3. Open it. The first time, macOS will say it can't verify the app, because it isn't notarised by Apple yet. To allow it:
+   - open **System Settings → Privacy & Security**,
+   - scroll down to the message about DEX, click **Open Anyway**, and confirm.
+
+   You only need to do this once.
+
+### Option B: build it yourself (needs Xcode)
+1. Install **Xcode** from the Mac App Store (free, about 10 GB), open it once, then run:
+   ```sh
+   sudo xcode-select -s /Applications/Xcode.app
+   ```
+2. Install Homebrew from [brew.sh](https://brew.sh) if you don't have it, then:
+   ```sh
+   brew install xcodegen
+   ```
+3. Get the code and build:
+   ```sh
+   git clone https://github.com/vxkram/DEX.git
+   cd DEX
+   make package
+   ```
+4. The app is in **build/DEX.zip**. Unzip it and move DEX.app to Applications.
+
+## Using it
+1. **Drop an image or a PDF** onto the window (or click **Choose File…**).
+2. Pick a tool from the dock at the bottom: **Convert, Crop, Compress, Compose, PDF, Info** (shortcuts ⌘1–⌘6).
+3. Check the **Result** in the panel. It shows the format, the size of the file you'll get, and whether anything is lost. If a file will be bigger than the original, tap **Why?** to see the reason.
+4. Click **Export** (⌘E) and choose where to save. **Your original file is never changed or overwritten.**
+
+## Privacy
+Everything happens on your Mac. DEX never uploads anything and has no network access. Location data is removed from exported photos unless you choose **Metadata → Keep**.
+
+## Credits
+Built with libjpeg-turbo, libwebp and Apple's frameworks. Details and licences are in **DEX ▸ About DEX**. For developers, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).

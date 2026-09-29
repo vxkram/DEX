@@ -9,7 +9,7 @@ TEST_FLAGS := -Xswiftc -plugin-path -Xswiftc $(CLT_TESTING_PLUGINS)
 endif
 endif
 
-.PHONY: build test test-hdr release cli formats clean project app run xcode
+.PHONY: build test test-hdr release cli formats clean project app run xcode package
 
 build:
 	swift build --package-path $(PACKAGE)
@@ -55,4 +55,13 @@ run: app
 
 xcode: project
 	open DEX.xcodeproj
+
+# Release build zipped for sharing: build/DEX.zip (ad-hoc signed, not
+# notarised; recipients allow it once in System Settings → Privacy & Security).
+package: project
+	xcodebuild -project DEX.xcodeproj -scheme DEX -configuration Release \
+		-derivedDataPath build/release -quiet build
+	rm -f build/DEX.zip
+	ditto -c -k --keepParent build/release/Build/Products/Release/DEX.app build/DEX.zip
+	@echo "Created build/DEX.zip ($$(du -h build/DEX.zip | cut -f1))"
 
