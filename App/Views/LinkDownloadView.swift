@@ -48,7 +48,7 @@ struct LinkDownloadSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Download Audio from Link").font(.headline)
+            Text("Download from Link").font(.headline)
             LinkDownloadField(download: download)
             HStack {
                 Spacer()
@@ -75,7 +75,7 @@ struct LinkPage: View {
                     .buttonStyle(.borderless)
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Text(download.kind == .video ? "Download Video" : "Download Audio").font(.headline)
+                Text("Download").font(.headline)
                 Spacer()
                 Color.clear.frame(width: 50, height: 1)
             }

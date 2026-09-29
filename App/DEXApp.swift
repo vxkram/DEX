@@ -23,7 +23,7 @@ struct DEXApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("Open…") { document.presentOpenPanel() }
                     .keyboardShortcut("o")
-                Button("Download Audio from Link…") { document.linkDownload.isShowingSheet = true }
+                Button("Download from Link…") { document.linkDownload.isShowingSheet = true }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
             }
             CommandGroup(replacing: .saveItem) {

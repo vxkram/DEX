@@ -18,7 +18,7 @@ Packages/DexCore/     SwiftPM package: engine + CLI + tests (no UI)
   Sources/Downloader/     yt-dlp install (checksum-verified), updates and runs, for YouTube links
   Sources/dex-cli/    `dex` command-line tool
 Packages/Lame/            LAME MP3 encoder (LGPL) as its own dynamic library (scripts/vendor-lame.sh)
-DownloaderService/        XPC service that runs yt-dlp for Download Audio from Link (not sandboxed; ADR 0006)
+DownloaderService/        XPC service that runs yt-dlp for Download from Link (not sandboxed; ADR 0006)
 docs/                     Plan, original brief, architecture decisions (adr/)
 design/                   App icon master (1024 px)
 ```

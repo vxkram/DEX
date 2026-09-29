@@ -53,12 +53,12 @@ You can also right-click images in Finder: **Services → DEX ▸ Convert to JPE
 1. **Drop an image, a PDF or an audio file** onto the window (or click **Choose File…**).
 2. Pick a tool from the dock at the bottom: **Convert, Crop, Compress, Compose, PDF, Info** for images, or **Trim, Convert, Info** for audio (shortcuts ⌘1–⌘6).
    For audio: Space plays, I and O set the trim at the playhead, and ⌘+ / ⌘− zoom (or pinch, or ⌥-scroll).
-   To get audio from YouTube, paste the link on the start screen or choose **File ▸ Download Audio from Link…** (⇧⌘O), press **Continue**, choose **Audio** or **Video**, pick a format or quality and **Download**. It's saved to Downloads.
+   To get audio or video from YouTube, paste the link on the start screen or choose **File ▸ Download from Link…** (⇧⌘O), press **Continue**, choose **Audio** or **Video**, pick a format or quality and **Download**. It's saved to Downloads.
 3. Check the **Result** in the panel. It shows the format, the size of the file you'll get, and whether anything is lost. If a file will be bigger than the original, tap **Why?** to see the reason.
 4. Click **Export** (⌘E) and choose where to save. **Your original file is never changed or overwritten.**
 
 ## Privacy
-Everything happens on your Mac, and DEX never uploads anything. The app itself has no network access. The one exception is **Download Audio from Link**: a small helper inside the app fetches the downloader (yt-dlp, from its official GitHub release, checksum-verified) the first time you use it, and then fetches the audio you asked for. Nothing else goes online. Location data is removed from exported photos unless you choose **Metadata → Keep**.
+Everything happens on your Mac, and DEX never uploads anything. The app itself has no network access. The one exception is **Download from Link**: a small helper inside the app fetches the downloader (yt-dlp, from its official GitHub release, checksum-verified) the first time you use it, and then fetches the audio or video you asked for. Nothing else goes online. Location data is removed from exported photos unless you choose **Metadata → Keep**.
 
 ## Credits
 Built with libjpeg-turbo, libwebp, LAME (MP3, LGPL, shipped as its own replaceable library) and Apple's frameworks. Details and licences are in **DEX ▸ About DEX**. For developers, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).

@@ -1,9 +1,9 @@
-# ADR 0006: Download Audio from Link (YouTube)
+# ADR 0006: Download from Link (YouTube)
 
 Date: 2026-09-29 · Status: accepted
 
 ## Decision
-- Paste a YouTube or YouTube Music link, on the drop screen or via **File ▸ Download Audio from Link…** (⇧⌘O), and press Continue. A **format page** looks the video up (thumbnail, title, channel, length, and the AAC stream's real bit rate) and lists **AAC (M4A), MP3 (320/256/192/128), FLAC, ALAC, WAV, AIFF**, each with a line on what it means. **Download** saves that format to `~/Downloads`; then you can open it in the editor or show it in Finder.
+- Paste a YouTube or YouTube Music link, on the drop screen or via **File ▸ Download from Link…** (⇧⌘O), and press Continue. A **format page** looks the video up (thumbnail, title, channel, length, and the AAC stream's real bit rate) and lists **AAC (M4A), MP3 (320/256/192/128), FLAC, ALAC, WAV, AIFF**, each with a line on what it means. **Download** saves that format to `~/Downloads`; then you can open it in the editor or show it in Finder.
 - **Where the formats come from:** YouTube only stores AAC (about 128 kbit/s) and Opus (about 160 kbit/s, in WebM, which macOS can't read). Every format is made from the AAC stream. The **AAC** row saves it exactly as streamed, with no re-encoding, and is marked **Best quality** and selected by default. **MP3** re-encodes it, which is what every "YouTube to MP3" site does, and the page says so. A higher MP3 bit rate doesn't restore detail. FLAC, ALAC, WAV and AIFF store the decoded audio with no further loss: bigger, not better.
 - **How it's saved:** the helper downloads the AAC into a hidden `~/Downloads/.DEX downloading/` folder. The app then moves it, or converts it with the audio engine, including the tags and cover. The hidden folder is then removed, so only the chosen file is left.
 - **Video:** the page's **Audio | Video** switch lists every quality YouTube has that macOS can play without converting, highest first and selected by default (e.g. 2160p60 4K, 1440p60, 1080p60…), with codec and size. They're saved as **MP4** (title and thumbnail included) with nothing re-encoded. The helper downloads the video-only stream plus the AAC audio (`-f <id>,140`) and joins them with an AVFoundation passthrough (`VideoMuxer`).
