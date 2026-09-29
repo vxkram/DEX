@@ -28,4 +28,8 @@ done
 cp "$SRC/COPYING" "$DEST/COPYING"
 cp "$SRC/PATENTS" "$DEST/PATENTS"
 echo "libwebp $VERSION ($SHA256), vendored by scripts/vendor-libwebp.sh" > "$DEST/VERSION"
+# Shown in the app's About window.
+mkdir -p "$ROOT/App/Resources/Licenses"
+cp "$SRC/COPYING" "$ROOT/App/Resources/Licenses/libwebp-LICENSE.txt"
+cp "$SRC/PATENTS" "$ROOT/App/Resources/Licenses/libwebp-PATENTS.txt"
 echo "Vendored libwebp $VERSION into $DEST"

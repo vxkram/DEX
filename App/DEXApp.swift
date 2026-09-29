@@ -17,6 +17,9 @@ struct DEXApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1180, height: 780)
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                AboutCommand()
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Open…") { document.presentOpenPanel() }
                     .keyboardShortcut("o")
@@ -27,6 +30,12 @@ struct DEXApp: App {
                     .disabled(!document.canExport)
             }
         }
+
+        Window("About DEX", id: "about") {
+            AboutView()
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
     }
 }
 

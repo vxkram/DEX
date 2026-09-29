@@ -87,4 +87,8 @@ sed -e "s/@COPYRIGHT_YEAR@/1991-2026/" "$SRC/src/jversion.h.in" > "$DEST/config/
 cp "$SRC/LICENSE.md" "$DEST/LICENSE.md"
 cp "$SRC/README.ijg" "$DEST/README.ijg"
 echo "libjpeg-turbo $VERSION ($SHA256), vendored by scripts/vendor-libjpeg-turbo.sh" > "$DEST/VERSION"
+# Shown in the app's About window.
+mkdir -p "$ROOT/App/Resources/Licenses"
+cp "$SRC/LICENSE.md" "$ROOT/App/Resources/Licenses/libjpeg-turbo-LICENSE.txt"
+cp "$SRC/README.ijg" "$ROOT/App/Resources/Licenses/libjpeg-turbo-README-IJG.txt"
 echo "Vendored libjpeg-turbo $VERSION into $DEST"

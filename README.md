@@ -22,6 +22,8 @@ docs/                     Plan, original brief, architecture decision records (s
 ```sh
 make test                                   # run all tests
 make formats                                # which image formats this Mac can read/write
+make run                                    # build and launch the app
+scripts/make-app-icon.sh my-icon-1024.png   # replace the app icon (1024×1024 PNG)
 make cli ARGS="inspect ~/Pictures/a.heic"   # inspect a file (add --json for machine output)
 make cli ARGS="convert a.heic --to png"      # lossless: runs straight away
 make cli ARGS="convert a.heic --to jpeg"     # lossy: explains what's lost and waits for --allow-lossy
