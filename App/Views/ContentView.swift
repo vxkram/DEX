@@ -4,7 +4,6 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var document: ImageDocument
     @State private var isDropTargeted = false
-    @State private var tool: Tool? = .convert
 
     var body: some View {
         ZStack {
@@ -15,7 +14,7 @@ struct ContentView: View {
                     document.presentOpenPanel()
                 }
             } else {
-                Workspace(document: document, tool: $tool)
+                Workspace(document: document)
 
                 if isDropTargeted {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)

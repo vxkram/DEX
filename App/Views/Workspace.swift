@@ -38,8 +38,8 @@ enum Tool: String, CaseIterable, Identifiable {
 /// The open-file layout: preview and dock on the left, the chosen tool's
 /// glass panel on the right, everything floating over the backdrop.
 struct Workspace: View {
-    let document: ImageDocument
-    @Binding var tool: Tool?
+    @Bindable var document: ImageDocument
+    private var tool: Tool? { document.tool }
 
     var body: some View {
         HStack(spacing: 18) {
@@ -49,11 +49,14 @@ struct Workspace: View {
                         // Tool panels show export status in their footer.
                         if tool == nil || tool == .info { ExportToast(document: document) }
                     }
-                ActionDock(selection: $tool)
+                ActionDock(selection: $document.tool)
             }
 
-            if let tool {
-                ToolPanel(tool: tool, document: document) { self.tool = nil }
+            if tool == .crop, let drag = document.cropDrag {
+                LoupePanel(document: document, drag: drag)
+                    .frame(width: Theme.panelWidth)
+            } else if let tool {
+                ToolPanel(tool: tool, document: document) { document.tool = nil }
                     .frame(width: Theme.panelWidth)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }

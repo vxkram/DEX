@@ -31,6 +31,14 @@ final class ImageDocument {
     var cropAspect: CropAspect = .free
     var exportState: ExportState = .idle
 
+    /// The tool panel that is open (nil = none).
+    var tool: Tool? = .convert
+    /// Set while a crop corner or edge is being dragged; drives the loupe.
+    var cropDrag: CropDrag?
+    /// Full-resolution pixels in display space for the loupe.
+    private(set) var loupeImage: LoupeImage?
+    @ObservationIgnored private var loupeTask: Task<Void, Never>?
+
     /// Formats this Mac can write, in display order.
     let writableFormats: [ImageFormat]
 
@@ -103,6 +111,9 @@ final class ImageDocument {
         preview = nil
         geometry = Geometry()
         cropAspect = .free
+        cropDrag = nil
+        loupeTask?.cancel()
+        loupeImage = nil
         loadError = nil
         exportState = .idle
         isLoading = true
@@ -132,6 +143,31 @@ final class ImageDocument {
     }
 
     // MARK: - Exporting
+
+    /// Export always goes through Convert, where format, metadata and
+    /// quality are chosen: from any other tool it switches there first.
+    func export() {
+        if tool == .convert {
+            presentSavePanel()
+        } else {
+            tool = .convert
+        }
+    }
+
+    /// Decodes the full-resolution image, oriented as displayed, so the
+    /// loupe shows real pixels rather than the down-sampled preview.
+    func prepareLoupe() {
+        guard let sourceURL, let info else { return }
+        let orientation = Orientation(exif: info.orientation).followed(by: geometry.orientation)
+        guard loupeImage?.orientation != orientation || loupeImage?.url != sourceURL else { return }
+        loupeTask?.cancel()
+        loupeTask = Task {
+            guard let image = try? await ImageEngine.displayImage(url: sourceURL, orientation: orientation.exif),
+                  !Task.isCancelled, self.sourceURL == sourceURL
+            else { return }
+            loupeImage = LoupeImage(url: sourceURL, orientation: orientation, image: image)
+        }
+    }
 
     /// Opens the Save panel directly. Losses are listed in the Convert panel
     /// and repeated in the Save panel's message, so the user is told before
@@ -198,4 +234,15 @@ final class ImageDocument {
     func revealInFinder(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
+}
+
+struct CropDrag: Equatable {
+    var handle: CropHandle
+    var rect: PixelRect
+}
+
+struct LoupeImage {
+    let url: URL
+    let orientation: Orientation
+    let image: PreviewImage
 }

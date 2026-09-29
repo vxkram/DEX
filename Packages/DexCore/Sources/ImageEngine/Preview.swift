@@ -39,6 +39,37 @@ extension ImageEngine {
         }
     }
 
+    /// The full-resolution image with an EXIF orientation applied, for
+    /// pixel-accurate views such as the crop loupe. Images above
+    /// `maxMegapixels` fall back to a down-sampled decode.
+    public static func displayImage(url: URL, orientation: Int, maxMegapixels: Int = 80) async throws -> PreviewImage {
+        try await MediaWork.run { token in
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+                  let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+            else {
+                throw InspectError.notAnImage(url.lastPathComponent)
+            }
+            let width = properties[kCGImagePropertyPixelWidth] as? Int ?? 0
+            let height = properties[kCGImagePropertyPixelHeight] as? Int ?? 0
+            var image: CGImage
+            if width * height > maxMegapixels * 1_000_000 {
+                let options = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 8192,
+                ] as CFDictionary
+                guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else {
+                    throw InspectError.corrupt(url.lastPathComponent)
+                }
+                image = thumbnail
+            } else {
+                image = try decodedFrame(source, index: 0, name: url.lastPathComponent)
+            }
+            try token.check()
+            image = try PixelOps.orient(image, orientation)
+            return PreviewImage(cgImage: image, isHDR: false)
+        }
+    }
+
     /// `inspect` off the calling actor, for UI code.
     public static func inspectAsync(url: URL) async throws -> MediaInfo {
         try await MediaWork.run { _ in try inspect(url: url) }

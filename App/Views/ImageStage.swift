@@ -32,6 +32,8 @@ struct ImageStage: View {
                 CropOverlay(document: document, display: display, scale: scale)
             }
             .frame(width: frame.width, height: frame.height)
+            .onAppear { document.prepareLoupe() }
+            .onChange(of: document.geometry.orientation) { document.prepareLoupe() }
     }
 
     private func resultStage(_ preview: PreviewImage, display: PixelSize, available: CGSize) -> some View {
@@ -125,13 +127,16 @@ private struct CropOverlay: View {
                 if dragStart == nil { dragStart = start }
                 let dx = Int((value.translation.width / scale).rounded())
                 let dy = Int((value.translation.height / scale).rounded())
-                draft = CropMath.adjust(start, handle: handle, dx: dx, dy: dy, in: display,
-                                        ratio: document.cropAspect.ratio(for: display))
+                let rect = CropMath.adjust(start, handle: handle, dx: dx, dy: dy, in: display,
+                                           ratio: document.cropAspect.ratio(for: display))
+                draft = rect
+                if handle != .move { document.cropDrag = CropDrag(handle: handle, rect: rect) }
             }
             .onEnded { _ in
                 if let draft { document.geometry.crop = draft == full ? nil : draft }
                 draft = nil
                 dragStart = nil
+                document.cropDrag = nil
             }
     }
 }

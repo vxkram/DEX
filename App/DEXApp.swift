@@ -21,7 +21,7 @@ struct DEXApp: App {
                     .keyboardShortcut("o")
             }
             CommandGroup(replacing: .saveItem) {
-                Button("Export…") { document.presentSavePanel() }
+                Button("Export…") { document.export() }
                     .keyboardShortcut("e")
                     .disabled(!document.canExport)
             }

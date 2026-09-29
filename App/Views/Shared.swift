@@ -159,9 +159,10 @@ struct ExportFooter: View {
             }
 
             Button {
-                document.presentSavePanel()
+                document.export()
             } label: {
-                Text(document.plan?.verdict == .lossy ? "Export with Loss…" : "Export…")
+                Text(document.tool != .convert ? "Choose Format & Export →"
+                     : document.plan?.verdict == .lossy ? "Export with Loss…" : "Export…")
                     .font(.headline)
                     .frame(maxWidth: .infinity, minHeight: 30)
             }
