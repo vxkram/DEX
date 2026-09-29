@@ -23,6 +23,8 @@ struct DEXApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("Open…") { document.presentOpenPanel() }
                     .keyboardShortcut("o")
+                Button("Download Audio from Link…") { document.linkDownload.isShowingSheet = true }
+                    .keyboardShortcut("o", modifiers: [.command, .shift])
             }
             CommandGroup(replacing: .saveItem) {
                 Button("Export…") { document.export() }
@@ -92,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         await document.open(ordered[0])
-        if ordered.count > 1 {
+        if ordered.count > 1 && document.audio == nil {
             document.tool = .compose
             await document.addImages(Array(ordered.dropFirst()))
         }

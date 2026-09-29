@@ -5,6 +5,7 @@ import SwiftUI
 struct DropZoneView: View {
     let isTargeted: Bool
     let formats: [ImageFormat]
+    let download: LinkDownload
     let choose: () -> Void
 
     var body: some View {
@@ -20,9 +21,12 @@ struct DropZoneView: View {
                 .symbolEffect(.bounce, value: isTargeted)
 
             VStack(spacing: 8) {
-                Text("Drop an image or PDF")
+                Text("Drop an image, PDF or audio")
                     .font(.title2.weight(.semibold))
                 Text(formats.map(\.displayName).joined(separator: " · "))
+                    .font(.technicalSmall)
+                    .foregroundStyle(.secondary)
+                Text("WAV · AIFF · FLAC · ALAC · AAC · MP3")
                     .font(.technicalSmall)
                     .foregroundStyle(.secondary)
             }
@@ -31,6 +35,14 @@ struct DropZoneView: View {
                 .controlSize(.large)
                 .buttonStyle(.glass)
                 .keyboardShortcut("o")
+
+            HStack(spacing: 10) {
+                Rectangle().fill(.white.opacity(0.1)).frame(height: 1)
+                Text("or").font(.caption).foregroundStyle(.secondary)
+                Rectangle().fill(.white.opacity(0.1)).frame(height: 1)
+            }
+
+            LinkDownloadField(download: download)
         }
         .padding(.horizontal, 56)
         .padding(.vertical, 44)

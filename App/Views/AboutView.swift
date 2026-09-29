@@ -49,6 +49,12 @@ struct AboutView: View {
                             licenses: [("License (BSD)", "libwebp-LICENSE"), ("Patent grant", "libwebp-PATENTS")]
                         )
                         Credit(
+                            name: "LAME 4.0",
+                            detail: "MP3 encoding (lame.sourceforge.io), under the GNU LGPL. It ships unmodified as its own library, Lame.framework, which you may replace.",
+                            note: nil,
+                            licenses: [("License (LGPL)", "LAME-COPYING")]
+                        )
+                        Credit(
                             name: "Background texture",
                             detail: "Photo by who's denilo on Unsplash, under the Unsplash License.",
                             note: nil,
@@ -56,7 +62,7 @@ struct AboutView: View {
                         )
                         Credit(
                             name: "Apple frameworks",
-                            detail: "ImageIO, Core Graphics, Accelerate, PDFKit and SwiftUI do the rest.",
+                            detail: "ImageIO, Core Graphics, Accelerate, PDFKit, AVFoundation and SwiftUI do the rest.",
                             note: nil,
                             licenses: []
                         )

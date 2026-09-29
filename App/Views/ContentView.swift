@@ -9,8 +9,20 @@ struct ContentView: View {
         ZStack {
             Backdrop()
 
-            if document.sourceURL == nil {
-                DropZoneView(isTargeted: isDropTargeted, formats: document.writableFormats) {
+            if document.linkDownload.isPageVisible {
+                LinkPage(download: document.linkDownload) { await document.open($0) }
+            } else if let audio = document.audio {
+                AudioWorkspace(document: document, audio: audio)
+
+                if isDropTargeted {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Theme.ember, lineWidth: 3)
+                        .padding(10)
+                        .allowsHitTesting(false)
+                }
+            } else if document.sourceURL == nil {
+                DropZoneView(isTargeted: isDropTargeted, formats: document.writableFormats,
+                             download: document.linkDownload) {
                     document.presentOpenPanel()
                 }
             } else {
@@ -28,7 +40,9 @@ struct ContentView: View {
             guard let url = urls.first else { return false }
             // In Compose, dropped images join the composition instead of
             // replacing the photo.
-            if document.tool == .compose && document.sourceURL != nil && !document.isPDFDocument {
+            if document.audio != nil {
+                Task { await document.open(url) }
+            } else if document.tool == .compose && document.sourceURL != nil && !document.isPDFDocument {
                 Task { await document.addImages(urls) }
             } else if document.tool == .pdf && document.sourceURL != nil && !document.isPDFDocument {
                 Task { await document.addPDFImages(urls) }
@@ -38,6 +52,9 @@ struct ContentView: View {
             return true
         } isTargeted: { isDropTargeted = $0 }
         .navigationTitle(document.sourceURL?.lastPathComponent ?? "DEX")
+        .sheet(isPresented: Bindable(document.linkDownload).isShowingSheet) {
+            LinkDownloadSheet(download: document.linkDownload)
+        }
         .sheet(isPresented: $document.needsPDFPassword) {
             PDFPasswordSheet(document: document)
         }

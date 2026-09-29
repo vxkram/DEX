@@ -27,6 +27,14 @@ targets:
         product: ImageEngine
       - package: DexCore
         product: JobSystem
+      - package: DexCore
+        product: AudioEngine
+      - package: DexCore
+        product: Downloader
+      - package: DexCore
+        product: AudioTagging
+      - target: DEXDownloader
+        embed: true
     info:
       path: App/Support/Info.plist
       properties:
@@ -36,7 +44,7 @@ targets:
         LSApplicationCategoryType: public.app-category.photography
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         NSHumanReadableCopyright: "DEX"
-        # Lets Finder's "Open With" and Dock-icon drops hand images to the
+        # Lets Finder's "Open With" and Dock-icon drops hand images and audio to the
         # app without making it the default viewer.
         # Finder right-click → Services → DEX ▸ … (handled by FinderServices).
         # An NSRequiredContext makes each service enabled by default.
@@ -74,18 +82,29 @@ targets:
           - NSMenuItem: {default: "DEX/Open in DEX"}
             NSMessage: openImages
             NSPortName: DEX
-            NSSendFileTypes: [public.image, com.adobe.pdf]
+            NSSendFileTypes: [public.image, com.adobe.pdf, public.audio]
             NSRequiredContext: {}
         CFBundleDocumentTypes:
           - CFBundleTypeName: Image
             CFBundleTypeRole: Viewer
             LSHandlerRank: Alternate
             LSItemContentTypes: [public.image, com.adobe.pdf]
+          - CFBundleTypeName: Audio
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes: [public.audio]
     entitlements:
       path: App/Support/DEX.entitlements
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.files.user-selected.read-write: true
+        # Lets the hardened runtime load Lame.framework: ad-hoc signatures
+        # have no Team ID to match, and the LGPL lets users replace LAME
+        # with their own build (ADR 0005).
+        com.apple.security.cs.disable-library-validation: true
+        # Opens what the Downloader service saves in ~/Downloads. The app
+        # itself has no network access; only the service does.
+        com.apple.security.files.downloads.read-write: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.dex.app
@@ -107,3 +126,34 @@ targets:
           STRIP_STYLE: all
           COPY_PHASE_STRIP: YES
           DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+
+  # Download Audio from Link: runs yt-dlp. An XPC service, because the
+  # sandboxed app can't launch a program it downloaded (macOS quarantines
+  # it and won't let a sandboxed app clear that). Not sandboxed, but it
+  # only ever fetches yt-dlp, runs it with a fixed argument list, and
+  # writes to ~/Downloads. See docs/adr/0006-link-download.md.
+  DEXDownloader:
+    type: xpc-service
+    platform: macOS
+    sources:
+      - DownloaderService
+      - App/Shared
+    dependencies:
+      - package: DexCore
+        product: Downloader
+    info:
+      path: DownloaderService/Info.plist
+      properties:
+        CFBundleDisplayName: DEX Downloader
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        XPCService:
+          ServiceType: Application
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.dex.app.Downloader
+        PRODUCT_NAME: DEXDownloader
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        ENABLE_HARDENED_RUNTIME: YES
+        SWIFT_STRICT_CONCURRENCY: complete

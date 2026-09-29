@@ -2,7 +2,7 @@
 
 # DEX
 
-**Take any image and quickly turn it into what you need.** DEX is a small (about 2 MB), native Mac app for converting, cropping, compressing, combining images and working with PDFs. It keeps quality whenever that's possible and tells you plainly when it isn't.
+**Take any image or sound and quickly turn it into what you need.** DEX is a small, native Mac app for converting, cropping, compressing and combining images, working with PDFs, and trimming and converting audio. It keeps quality whenever that's possible and tells you plainly when it isn't.
 
 ## What it does
 
@@ -13,6 +13,7 @@
 | **Compress** | Lossless or smaller-file compression, smaller dimensions (4K / web / social), and the real resulting size shown before you save |
 | **Compose** | Put images on top of each other (logos, watermarks) or join them side by side, stacked or in a grid, in any mix of formats |
 | **PDF** | Make PDFs from images; turn PDF pages into images; rearrange, rotate, delete, extract, merge, split, add text or images to, and compress PDFs |
+| **Audio** | Trim on a zoomable waveform, play it back, and save as WAV, AIFF, FLAC, ALAC, AAC or MP3. Trimming an MP3, AAC or ALAC doesn't re-encode it, and is still exact to the sample. Show and change the cover art, title and artist. Paste a YouTube link and choose on the next page: audio (AAC exactly as streamed, MP3, FLAC, ALAC, WAV, AIFF) or **video** in any quality up to 4K/8K, saved as MP4 without re-encoding |
 
 You can also right-click images in Finder: **Services → DEX ▸ Convert to JPEG / PNG / HEIC / WebP, Combine into PDF**.
 
@@ -49,13 +50,15 @@ You can also right-click images in Finder: **Services → DEX ▸ Convert to JPE
 4. The app is in **build/DEX.zip**. Unzip it and move DEX.app to Applications.
 
 ## Using it
-1. **Drop an image or a PDF** onto the window (or click **Choose File…**).
-2. Pick a tool from the dock at the bottom: **Convert, Crop, Compress, Compose, PDF, Info** (shortcuts ⌘1–⌘6).
+1. **Drop an image, a PDF or an audio file** onto the window (or click **Choose File…**).
+2. Pick a tool from the dock at the bottom: **Convert, Crop, Compress, Compose, PDF, Info** for images, or **Trim, Convert, Info** for audio (shortcuts ⌘1–⌘6).
+   For audio: Space plays, I and O set the trim at the playhead, and ⌘+ / ⌘− zoom (or pinch, or ⌥-scroll).
+   To get audio from YouTube, paste the link on the start screen or choose **File ▸ Download Audio from Link…** (⇧⌘O), press **Continue**, choose **Audio** or **Video**, pick a format or quality and **Download**. It's saved to Downloads.
 3. Check the **Result** in the panel. It shows the format, the size of the file you'll get, and whether anything is lost. If a file will be bigger than the original, tap **Why?** to see the reason.
 4. Click **Export** (⌘E) and choose where to save. **Your original file is never changed or overwritten.**
 
 ## Privacy
-Everything happens on your Mac. DEX never uploads anything and has no network access. Location data is removed from exported photos unless you choose **Metadata → Keep**.
+Everything happens on your Mac, and DEX never uploads anything. The app itself has no network access. The one exception is **Download Audio from Link**: a small helper inside the app fetches the downloader (yt-dlp, from its official GitHub release, checksum-verified) the first time you use it, and then fetches the audio you asked for. Nothing else goes online. Location data is removed from exported photos unless you choose **Metadata → Keep**.
 
 ## Credits
-Built with libjpeg-turbo, libwebp and Apple's frameworks. Details and licences are in **DEX ▸ About DEX**. For developers, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+Built with libjpeg-turbo, libwebp, LAME (MP3, LGPL, shipped as its own replaceable library) and Apple's frameworks. Details and licences are in **DEX ▸ About DEX**. For developers, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).

@@ -1,4 +1,5 @@
 import AppKit
+import AudioEngine
 import ImageEngine
 import JobSystem
 import MediaModel
@@ -19,6 +20,10 @@ final class ImageDocument {
     }
 
     private(set) var sourceURL: URL?
+    /// Set when the open file is audio; the audio workspace takes over.
+    private(set) var audio: AudioDocument?
+    /// YouTube link → audio in Downloads.
+    let linkDownload = LinkDownload()
     private(set) var info: MediaInfo?
     private(set) var preview: PreviewImage?
     private(set) var loadError: String?
@@ -281,13 +286,13 @@ final class ImageDocument {
         if case .running = exportState { true } else { false }
     }
 
-    var canExport: Bool { plan != nil && !isExporting }
+    var canExport: Bool { audio.map(\.canExport) ?? (plan != nil && !isExporting) }
 
     // MARK: - Opening
 
     func presentOpenPanel() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image, .pdf]
+        panel.allowedContentTypes = [.image, .pdf, .audio]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -300,6 +305,8 @@ final class ImageDocument {
         accessedURL = url.startAccessingSecurityScopedResource() ? url : nil
 
         sourceURL = url
+        audio?.close()
+        audio = nil
         info = nil
         preview = nil
         releaseExtras()
@@ -327,6 +334,14 @@ final class ImageDocument {
         pdfPreviewPages = []
         pdfEstimate = nil
         isLoading = true
+
+        if AudioEngine.isAudio(url) {
+            let audio = AudioDocument(url: url)
+            self.audio = audio
+            isLoading = false
+            await audio.load()
+            return
+        }
 
         if PDFEngine.isPDF(url) {
             isPDFDocument = true
@@ -819,7 +834,9 @@ final class ImageDocument {
     /// Export always goes through Convert, where format, metadata and
     /// quality are chosen: from any other tool it switches there first.
     func export() {
-        if tool == .convert {
+        if let audio {
+            audio.export()
+        } else if tool == .convert {
             presentSavePanel()
         } else {
             tool = .convert

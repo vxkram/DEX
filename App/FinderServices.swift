@@ -34,7 +34,7 @@ final class FinderServices: NSObject {
         NSApp.activate()
         Task {
             await document.open(first)
-            if urls.count > 1 {
+            if urls.count > 1 && document.audio == nil {
                 document.tool = .compose
                 await document.addImages(Array(urls.dropFirst()))
             }
