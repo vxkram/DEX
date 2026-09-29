@@ -3,7 +3,7 @@
 Date: 2026-09-29 · Status: accepted
 
 ## Decision
-- **Layout:** the preview fills the window over a textured backdrop. A glass **action dock** runs along the bottom (Convert, Crop, Resize, Compress, Overlay, PDF | Info), and each action opens a glass **panel** on the right. The title bar is hidden, and the file name and facts sit beside the traffic lights.
+- **Layout:** the preview fills the window over a textured backdrop. A glass **action dock** runs along the bottom (Convert, Crop, Compress, Compose, PDF | Info). Resizing lives in Compress as proportional "Dimensions" presets, so an image can never be stretched, and each action opens a glass **panel** on the right. The title bar is hidden, and the file name and facts sit beside the traffic lights.
 - **Backdrop:** the grain texture (`App/Resources/Texture.heic`, 2048 px, ~360 KB, credited in `docs/CREDITS.md`) at 28% opacity over near-black, with a vignette. It covers the whole window.
 - **Accent:** molten ember `#F55C26`. It is the only brand colour; the verdict colours (green/teal/orange) keep their meaning.
 - **Type:** SF Pro for UI and SF Mono for technical values (formats, dimensions, sizes). No bundled fonts.

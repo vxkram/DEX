@@ -55,6 +55,8 @@ struct CompressPanel: View {
                 }
             }
 
+            DimensionsSection(document: document)
+
             VStack(alignment: .leading, spacing: 6) {
                 Toggle("Remove all metadata", isOn: Binding(
                     get: { document.metadata == .removeAll },
@@ -149,4 +151,81 @@ private struct CompressionQuality: View {
             .tint(Theme.ember)
         }
     }
+}
+
+/// Smaller pixel dimensions: the biggest size saving there is. Always
+/// proportional (nothing can be stretched) and never larger than the
+/// original.
+private struct DimensionsSection: View {
+    @Bindable var document: ImageDocument
+
+    private enum Choice: Hashable {
+        case original
+        case percent(Int)
+        case longEdge(Int)
+    }
+
+    var body: some View {
+        if let base = document.croppedSize {
+            let choices = options(for: base)
+
+            VStack(alignment: .leading, spacing: 10) {
+                PanelSectionHeader("Dimensions")
+                Explanation("Fewer pixels make a much smaller file. The proportions always stay the same, so nothing is stretched, and it never gets bigger than the original.")
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
+                    ForEach(choices, id: \.0) { choice, title, detail in
+                        let size = size(for: choice, base: base)
+                        let isSelected = (document.geometry.resize ?? base) == size
+                        Button {
+                            document.geometry.resize = choice == .original ? nil : size
+                        } label: {
+                            VStack(spacing: 1) {
+                                Text(title).font(.system(.caption, design: .monospaced, weight: .semibold))
+                                Text(verbatim: detail).font(.caption2)
+                                    .foregroundStyle(isSelected ? .white.opacity(0.85) : .secondary)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 38)
+                            .foregroundStyle(isSelected ? .white : .primary)
+                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(isSelected ? Theme.ember : .white.opacity(0.07)))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(.white.opacity(isSelected ? 0 : 0.08)))
+                            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private typealias Option = (choice: Choice, title: String, detail: String)
+
+    private func options(for base: PixelSize) -> [Option] {
+        let longest = max(base.width, base.height)
+        var options: [Option] = [(.original, "Original", sizeText(base))]
+        for percent in [75, 50, 25] {
+            options.append((.percent(percent), "\(percent)%", sizeText(size(for: .percent(percent), base: base))))
+        }
+        for (edge, use) in [(3840, "4K"), (2048, "Web"), (1080, "Social")] where edge < longest {
+            options.append((.longEdge(edge), "\(edge) · \(use)", sizeText(size(for: .longEdge(edge), base: base))))
+        }
+        return options
+    }
+
+    private func size(for choice: Choice, base: PixelSize) -> PixelSize {
+        switch choice {
+        case .original: base
+        case .percent(let percent): scaled(base, Double(percent) / 100)
+        case .longEdge(let edge): scaled(base, Double(edge) / Double(max(base.width, base.height)))
+        }
+    }
+
+    /// Same factor on both sides: the aspect ratio can't change.
+    private func scaled(_ base: PixelSize, _ factor: Double) -> PixelSize {
+        PixelSize(width: max(Int((Double(base.width) * factor).rounded()), 1),
+                  height: max(Int((Double(base.height) * factor).rounded()), 1))
+    }
+
+    private func sizeText(_ size: PixelSize) -> String { "\(size.width) × \(size.height)" }
 }

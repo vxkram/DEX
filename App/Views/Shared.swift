@@ -223,3 +223,18 @@ struct EstimateLine: View {
         .help("Measured by running the real export in the background.")
     }
 }
+
+/// A short, plain-language note under a setting.
+struct Explanation: View {
+    let text: String
+
+    init(_ text: String) { self.text = text }
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}

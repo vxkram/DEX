@@ -4,7 +4,7 @@ import SwiftUI
 /// Actions in the dock. Only available ones can be opened; the rest show
 /// where the app is going and light up as they are built.
 enum Tool: String, CaseIterable, Identifiable {
-    case convert, crop, resize, compress, compose, pdf, info
+    case convert, crop, compress, compose, pdf, info
 
     var id: Self { self }
 
@@ -12,7 +12,6 @@ enum Tool: String, CaseIterable, Identifiable {
         switch self {
         case .convert: "Convert"
         case .crop: "Crop"
-        case .resize: "Resize"
         case .compress: "Compress"
         case .compose: "Compose"
         case .pdf: "PDF"
@@ -24,7 +23,6 @@ enum Tool: String, CaseIterable, Identifiable {
         switch self {
         case .convert: "arrow.triangle.2.circlepath"
         case .crop: "crop"
-        case .resize: "arrow.up.left.and.arrow.down.right"
         case .compress: "arrow.down.right.and.arrow.up.left"
         case .compose: "square.on.square"
         case .pdf: "doc.richtext"
@@ -264,7 +262,6 @@ private struct ToolPanel: View {
             switch tool {
             case .convert: ConvertPanel(document: document)
             case .crop: CropPanel(document: document)
-            case .resize: ResizePanel(document: document)
             case .compress: CompressPanel(document: document)
             case .compose: ComposePanel(document: document)
             default: InfoPanel(document: document)
