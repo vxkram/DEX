@@ -443,6 +443,16 @@ final class ImageDocument {
         pdfImages.swapAt(index, target)
     }
 
+    /// Turns the images combined in Compose into pages of their own.
+    func splitCompositionIntoPages() {
+        let images = composedImages
+        layers = []
+        arrangedImages = []
+        basePosition = 0
+        selectedLayerID = nil
+        pdfImages = images + pdfImages.filter { !images.contains($0) }
+    }
+
     func removePDFImage(_ image: ComposedImage) {
         pdfImages.removeAll { $0 == image }
     }
@@ -454,7 +464,10 @@ final class ImageDocument {
         panel.nameFieldStringValue = SafeOutput.defaultDestination(for: sourceURL, pathExtension: "pdf").lastPathComponent
         panel.directoryURL = sourceURL.deletingLastPathComponent()
         panel.canCreateDirectories = true
-        panel.message = "\(pdfImages.count + 1) page\(pdfImages.isEmpty ? "" : "s"). JPEG pages are embedded without re-encoding; location data is removed."
+        panel.isExtensionHidden = false
+        let pages = pdfImages.count + 1
+        let size = pdfEstimate?.bytes.map { " · ≈ " + ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? ""
+        panel.message = "\(pages) page\(pages == 1 ? "" : "s")\(size)"
         let handler: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard response == .OK, let destination = panel.url else { return }
             MainActor.assumeIsolated { self?.startPDFExport(to: destination) }

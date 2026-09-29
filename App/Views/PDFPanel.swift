@@ -96,8 +96,17 @@ private struct ImagesToPDF: View {
         VStack(alignment: .leading, spacing: 8) {
             PanelSectionHeader("Pages (in order)")
             if let info = document.info {
-                PageRow(name: info.fileName, detail: document.hasEdits || document.composition != nil ? "with your edits" : "page 1",
+                let combined = document.composedImages.count
+                PageRow(name: info.fileName,
+                        detail: combined > 0 ? "page 1 · combined with \(combined) image\(combined == 1 ? "" : "s") from Compose"
+                            : document.hasEdits ? "page 1 · with your edits" : "page 1",
                         preview: document.preview?.cgImage)
+                if combined > 0 {
+                    Button("Make each image its own page") { document.splitCompositionIntoPages() }
+                        .buttonStyle(.link)
+                        .tint(Theme.ember)
+                        .font(.caption.weight(.semibold))
+                }
             }
             ForEach(Array(document.pdfImages.enumerated()), id: \.element.url) { index, image in
                 PageRow(name: image.info.fileName, detail: "page \(index + 2)", preview: document.extraPreviews[image.url]?.cgImage,
