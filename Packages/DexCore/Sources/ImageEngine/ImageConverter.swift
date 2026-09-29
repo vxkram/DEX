@@ -153,6 +153,24 @@ extension ImageEngine {
     private static func losslessJPEGTransform(_ url: URL, plan: ConversionPlan, to temporary: URL) throws {
         let data = try Data(contentsOf: url, options: .alwaysMapped)
         let progressive = plan.request.optimize || (JPEGLossless.info(of: data)?.progressive ?? false)
+        if plan.request.metadata == .removeAll {
+            // Never through ImageIO, whose metadata rewrite adds a ~2–3 KB
+            // XMP packet. Without a crop, a marker-level strip keeps the
+            // compressed data byte for byte; a repack (crop or optimise) is
+            // only kept when it is actually smaller.
+            var candidates: [Data] = []
+            if plan.pixelCrop == nil {
+                candidates.append(try JPEGMarkers.strippingMetadata(data, orientation: plan.outputOrientation))
+            }
+            if plan.pixelCrop != nil || plan.request.optimize {
+                candidates.append(try JPEGLossless.transform(
+                    data, crop: plan.pixelCrop, progressive: progressive, exifOrientation: plan.outputOrientation
+                ))
+            }
+            guard let smallest = candidates.min(by: { $0.count < $1.count }) else { return }
+            try smallest.write(to: temporary)
+            return
+        }
         let cropped = try JPEGLossless.transform(data, crop: plan.pixelCrop, progressive: progressive)
         let original = try openSource(url)
         guard let croppedSource = CGImageSourceCreateWithData(cropped as CFData, nil),

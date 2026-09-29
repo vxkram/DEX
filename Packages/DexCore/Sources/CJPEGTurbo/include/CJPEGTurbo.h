@@ -23,6 +23,8 @@ typedef struct {
     /// Huffman-optimised output: smaller, still lossless.
     int optimize;
     int progressive;
+    /// When > 1, write a minimal EXIF block holding only this orientation.
+    int exif_orientation;
 } dx_jpeg_options;
 
 int dx_jpeg_read_info(const unsigned char *data, size_t size, dx_jpeg_info *info,

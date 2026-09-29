@@ -130,6 +130,18 @@ int dx_jpeg_transform(const unsigned char *data, size_t size, const dx_jpeg_opti
 
     jpeg_mem_dest(&dst, &buffer, &buffer_size);
     jpeg_write_coefficients(&dst, dst_coefficients);
+    if (options->exif_orientation > 1 && options->exif_orientation <= 8) {
+        // "Exif\0\0", big-endian TIFF header, one IFD entry: Orientation
+        // (0x0112), SHORT, count 1, value; no next IFD. 32 bytes.
+        const JOCTET exif[32] = {
+            'E', 'x', 'i', 'f', 0, 0,
+            'M', 'M', 0, 42, 0, 0, 0, 8,
+            0, 1,
+            0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, (JOCTET)options->exif_orientation, 0, 0,
+            0, 0, 0, 0,
+        };
+        jpeg_write_marker(&dst, JPEG_APP0 + 1, exif, sizeof(exif));
+    }
     for (jpeg_saved_marker_ptr marker = src.marker_list; marker; marker = marker->next) {
         if (dx_is_icc_marker(marker)) {
             jpeg_write_marker(&dst, marker->marker, marker->data, marker->data_length);

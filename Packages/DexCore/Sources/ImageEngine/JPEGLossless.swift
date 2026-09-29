@@ -25,8 +25,9 @@ enum JPEGLossless {
     /// Optionally crops on block boundaries (the rect must already be
     /// snapped), and always Huffman-optimises the result. Only ICC profiles
     /// are carried; the caller rewrites the rest of the metadata.
-    static func transform(_ data: Data, crop rect: PixelRect?, progressive: Bool) throws -> Data {
+    static func transform(_ data: Data, crop rect: PixelRect?, progressive: Bool, exifOrientation: Int = 1) throws -> Data {
         var options = dx_jpeg_options()
+        options.exif_orientation = Int32(exifOrientation)
         if let rect {
             options.crop = 1
             options.crop_x = UInt32(rect.x)

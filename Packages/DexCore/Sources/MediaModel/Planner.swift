@@ -90,6 +90,9 @@ public enum Planner {
                 || (request.metadata == .removeLocation && source.hasGPS)
             if !changesMetadata {
                 strategy = .copyFile
+            } else if target == .jpeg && request.metadata == .removeAll && source.jpegBlockSize != nil && !source.hasHDRGainMap {
+                // Handled below by libjpeg-turbo, which writes no metadata
+                // padding (ImageIO's rewrite adds ~2–3 KB).
             } else if target.supportsLosslessMetadataEdit && target.supportsOrientationTag {
                 strategy = .rewriteMetadata
                 outputOrientation = total.exif
@@ -101,7 +104,7 @@ public enum Planner {
         // 2. JPEG crop and/or optimisation on the compressed data: no
         //    decode, no loss.
         if strategy == .reencode, sourceFormat == .jpeg, target == .jpeg, resize == nil, !wantsLossy,
-           (crop != nil && !geometry.exactCrop) || (crop == nil && optimizes),
+           (crop != nil && !geometry.exactCrop) || (crop == nil && (optimizes || request.metadata == .removeAll)),
            let block = source.jpegBlockSize {
             strategy = .losslessJPEGTransform
             outputOrientation = total.exif

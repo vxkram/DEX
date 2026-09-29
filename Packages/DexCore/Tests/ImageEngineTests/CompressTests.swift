@@ -39,6 +39,37 @@ struct CompressTests {
         #expect(try size(output) <= size(source))
     }
 
+    @Test("Removing metadata never grows a JPEG", arguments: [1, 6])
+    func removingMetadataShrinks(_ orientation: Int) async throws {
+        defer { fixtures.cleanUp() }
+        var spec = FixtureFactory.Spec()
+        spec.width = 96
+        spec.height = 64
+        spec.gps = true
+        spec.orientation = orientation
+        let source = try await fixtures.image(.jpeg, named: "small.jpg", spec)
+
+        let (output, plan) = try await run(source, ConvertRequest(target: .jpeg, metadata: .removeAll))
+        #expect(plan.strategy == .losslessJPEGTransform)
+        #expect(plan.verdict == .noReencode)
+        #expect(try size(output) < size(source))
+        let info = try ImageEngine.inspect(url: output)
+        #expect(!info.hasGPS)
+        #expect(info.orientation == orientation)
+        #expect(try pixels(output) == pixels(source))
+    }
+
+    @Test func strippingKeepsTheColourProfile() async throws {
+        defer { fixtures.cleanUp() }
+        var spec = FixtureFactory.Spec()
+        spec.colorSpace = CGColorSpace.displayP3
+        spec.gps = true
+        let source = try await fixtures.image(.jpeg, named: "p3.jpg", spec)
+        let (output, _) = try await run(source, ConvertRequest(target: .jpeg, metadata: .removeAll))
+        #expect(try ImageEngine.inspect(url: output).colorProfile?.contains("P3") == true)
+        #expect(try pixels(output) == pixels(source))
+    }
+
     @Test func tiffIsLZWCompressedLosslessly() async throws {
         defer { fixtures.cleanUp() }
         let source = try await noisy(.tiff)
