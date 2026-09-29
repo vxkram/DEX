@@ -23,7 +23,7 @@ You can also right-click images in Finder: **Services → DEX ▸ Convert to JPE
 ## Install
 
 ### Option A: download the app (no Xcode needed)
-1. Download **DEX.zip** (ask the owner for it, or get it from this repository's Releases page if there is one).
+1. Download **DEX.zip** from the [latest release](https://github.com/vxkram/DEX/releases/latest).
 2. Double-click the zip, then drag **DEX.app** into your **Applications** folder.
 3. Open it. The first time, macOS will say it can't verify the app, because it isn't notarised by Apple yet. To allow it:
    - open **System Settings → Privacy & Security**,
