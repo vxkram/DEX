@@ -31,6 +31,22 @@ final class ImageDocument {
     var cropAspect: CropAspect = .free
     /// Lossless compression (Compress → Lossless).
     var optimize = false
+
+    // MARK: Compose state
+    var composeMode: ComposeMode = .layers
+    var layers: [OverlayLayer] = []
+    var arrangedImages: [ComposedImage] = []
+    var spacing = 0
+    var sizing: Arrangement.Sizing = .matchSmallest
+    var alignment: Arrangement.Alignment = .center
+    var background: Arrangement.Background = .white
+    var gridColumns = 2
+    var selectedLayerID: UUID?
+    /// Small previews of added images, for the canvas and the list.
+    private(set) var extraPreviews: [URL: PreviewImage] = [:]
+    /// Why an added image couldn't be used, if one couldn't.
+    var composeWarning: String?
+    @ObservationIgnored private var accessedExtras: Set<URL> = []
     var exportState: ExportState = .idle
     /// The real output size for the current settings, when known.
     private(set) var estimate: SizeEstimate?
@@ -57,7 +73,8 @@ final class ImageDocument {
     // MARK: - Derived state
 
     var request: ConvertRequest {
-        ConvertRequest(target: target, quality: quality, metadata: metadata, geometry: geometry, optimize: optimize)
+        ConvertRequest(target: target, quality: quality, metadata: metadata, geometry: geometry, optimize: optimize,
+                       composition: composition)
     }
 
     /// Size as shown after the file's orientation and the user's rotate/flip.
@@ -73,6 +90,117 @@ final class ImageDocument {
     var croppedSize: PixelSize? { effectiveCrop?.size ?? displaySize }
 
     var hasEdits: Bool { !geometry.isIdentity }
+
+    // MARK: Compose
+
+    var composition: Composition? {
+        switch composeMode {
+        case .layers:
+            return layers.isEmpty ? nil : .layers(layers)
+        case .horizontal, .vertical, .grid:
+            return arrangedImages.isEmpty ? nil : .arrangement(arrangement)
+        }
+    }
+
+    var arrangement: Arrangement {
+        let layout: Arrangement.Layout = switch composeMode {
+        case .vertical: .vertical
+        case .grid: .grid(columns: gridColumns)
+        default: .horizontal
+        }
+        return Arrangement(layout: layout, images: arrangedImages, spacing: spacing, sizing: sizing,
+                           alignment: alignment, background: background)
+    }
+
+    /// Images the user has added, in the current mode.
+    var composedImages: [ComposedImage] {
+        composeMode == .layers ? layers.map(\.image) : arrangedImages
+    }
+
+    func presentAddImagesPanel() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.message = "Choose images to combine with \(sourceURL?.lastPathComponent ?? "this image"). Any format works."
+        guard panel.runModal() == .OK else { return }
+        let urls = panel.urls
+        Task { await addImages(urls) }
+    }
+
+    /// Adds images of any readable format to the composition.
+    func addImages(_ urls: [URL]) async {
+        composeWarning = nil
+        for url in urls where url != sourceURL {
+            if url.startAccessingSecurityScopedResource() { accessedExtras.insert(url) }
+            let info: MediaInfo
+            do {
+                info = try await ImageEngine.inspectAsync(url: url)
+            } catch {
+                composeWarning = String(describing: error)
+                continue
+            }
+            let image = ComposedImage(url: url, info: info)
+            guard !composedImages.contains(image) else { continue }
+            if composeMode == .layers {
+                let layer = OverlayLayer.placed(image, on: croppedSize ?? info.displaySize)
+                layers.append(layer)
+                selectedLayerID = layer.id
+            } else {
+                arrangedImages.append(image)
+            }
+            if let preview = try? await ImageEngine.preview(url: url, maxPixelSize: 1024) {
+                extraPreviews[url] = preview
+            }
+        }
+    }
+
+    func removeImage(_ image: ComposedImage) {
+        layers.removeAll { $0.image == image }
+        arrangedImages.removeAll { $0 == image }
+        if accessedExtras.remove(image.url) != nil { image.url.stopAccessingSecurityScopedResource() }
+        extraPreviews[image.url] = nil
+    }
+
+    /// Moves an image earlier (up) or later in the order; for layers,
+    /// later means drawn on top.
+    func move(_ image: ComposedImage, by offset: Int) {
+        if let index = layers.firstIndex(where: { $0.image == image }) {
+            let target = min(max(index + offset, 0), layers.count - 1)
+            layers.swapAt(index, target)
+        } else if let index = arrangedImages.firstIndex(of: image) {
+            let target = min(max(index + offset, 0), arrangedImages.count - 1)
+            arrangedImages.swapAt(index, target)
+        }
+    }
+
+    /// Switching between layers and arrangements carries the images over.
+    func setComposeMode(_ mode: ComposeMode) {
+        let images = composedImages
+        let wasLayers = composeMode == .layers
+        composeMode = mode
+        if wasLayers && mode != .layers {
+            arrangedImages = images
+        } else if !wasLayers && mode == .layers {
+            let canvas = croppedSize ?? PixelSize(width: 1, height: 1)
+            layers = images.map { OverlayLayer.placed($0, on: canvas) }
+            selectedLayerID = layers.last?.id
+        }
+    }
+
+    func updateLayer(_ id: UUID, _ change: (inout OverlayLayer) -> Void) {
+        guard let index = layers.firstIndex(where: { $0.id == id }) else { return }
+        change(&layers[index])
+    }
+
+    private func releaseExtras() {
+        for url in accessedExtras { url.stopAccessingSecurityScopedResource() }
+        accessedExtras = []
+        extraPreviews = [:]
+        layers = []
+        arrangedImages = []
+        selectedLayerID = nil
+    }
 
     func rotateClockwise() { geometry.rotateClockwise(); geometry.resize = nil }
     func rotateCounterclockwise() { geometry.rotateCounterclockwise(); geometry.resize = nil }
@@ -113,6 +241,7 @@ final class ImageDocument {
         sourceURL = url
         info = nil
         preview = nil
+        releaseExtras()
         geometry = Geometry()
         cropAspect = .free
         optimize = false
@@ -166,8 +295,16 @@ final class ImageDocument {
             let bytes = try await ImageEngine.estimatedSize(sourceURL, plan: plan)
             if self.request == request { estimate = SizeEstimate(request: request, bytes: bytes) }
         } catch {
-            if self.request == request, !(error is CancellationError) { estimate = nil }
+            if self.request == request, !(error is CancellationError) {
+                estimate = SizeEstimate(request: request, bytes: nil, failure: String(describing: error))
+            }
         }
+    }
+
+    /// Re-measures when the file finishes loading as well as when a
+    /// setting changes.
+    var estimateKey: EstimateKey {
+        EstimateKey(url: sourceURL, isLoaded: info != nil, request: request)
     }
 
     /// The estimate if it belongs to the current settings.
@@ -278,8 +415,40 @@ struct LoupeImage {
     let image: PreviewImage
 }
 
+struct EstimateKey: Equatable {
+    let url: URL?
+    let isLoaded: Bool
+    let request: ConvertRequest
+}
+
 struct SizeEstimate: Equatable {
     let request: ConvertRequest
-    /// nil while measuring.
+    /// nil while measuring or after a failure.
     let bytes: Int64?
+    var failure: String? = nil
 }
+
+enum ComposeMode: String, CaseIterable, Identifiable {
+    case layers, horizontal, vertical, grid
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .layers: "On top"
+        case .horizontal: "Side by side"
+        case .vertical: "Stacked"
+        case .grid: "Grid"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .layers: "square.on.square"
+        case .horizontal: "rectangle.split.2x1"
+        case .vertical: "rectangle.split.1x2"
+        case .grid: "square.grid.2x2"
+        }
+    }
+}
+

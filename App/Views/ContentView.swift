@@ -26,7 +26,13 @@ struct ContentView: View {
         }
         .dropDestination(for: URL.self) { urls, _ in
             guard let url = urls.first else { return false }
-            Task { await document.open(url) }
+            // In Compose, dropped images join the composition instead of
+            // replacing the photo.
+            if document.tool == .compose && document.sourceURL != nil {
+                Task { await document.addImages(urls) }
+            } else {
+                Task { await document.open(url) }
+            }
             return true
         } isTargeted: { isDropTargeted = $0 }
         .navigationTitle(document.sourceURL?.lastPathComponent ?? "DEX")

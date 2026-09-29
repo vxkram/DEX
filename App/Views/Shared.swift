@@ -209,6 +209,10 @@ struct EstimateLine: View {
                         .font(.technicalSmall)
                         .foregroundStyle(change > 0.005 ? .orange : change < -0.005 ? .green : .secondary)
                 }
+            } else if let failure = document.currentEstimate?.failure {
+                Image(systemName: "questionmark.circle").foregroundStyle(.secondary)
+                Text("Size unknown").font(.technicalSmall).foregroundStyle(.secondary)
+                    .help(failure)
             } else {
                 ProgressView().controlSize(.mini)
                 Text("Measuring size…")

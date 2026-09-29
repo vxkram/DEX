@@ -4,7 +4,7 @@ import SwiftUI
 /// Actions in the dock. Only available ones can be opened; the rest show
 /// where the app is going and light up as they are built.
 enum Tool: String, CaseIterable, Identifiable {
-    case convert, crop, resize, compress, overlay, pdf, info
+    case convert, crop, resize, compress, compose, pdf, info
 
     var id: Self { self }
 
@@ -14,7 +14,7 @@ enum Tool: String, CaseIterable, Identifiable {
         case .crop: "Crop"
         case .resize: "Resize"
         case .compress: "Compress"
-        case .overlay: "Overlay"
+        case .compose: "Compose"
         case .pdf: "PDF"
         case .info: "Info"
         }
@@ -26,13 +26,13 @@ enum Tool: String, CaseIterable, Identifiable {
         case .crop: "crop"
         case .resize: "arrow.up.left.and.arrow.down.right"
         case .compress: "arrow.down.right.and.arrow.up.left"
-        case .overlay: "square.on.square"
+        case .compose: "square.on.square"
         case .pdf: "doc.richtext"
         case .info: "info.circle"
         }
     }
 
-    var isAvailable: Bool { [.convert, .crop, .resize, .compress, .info].contains(self) }
+    var isAvailable: Bool { self != .pdf }
 }
 
 /// The open-file layout: preview and dock on the left, the chosen tool's
@@ -66,7 +66,7 @@ struct Workspace: View {
         .overlay(alignment: .top) { TopBar(document: document) }
         .ignoresSafeArea(.container, edges: .top)
         .animation(.spring(duration: 0.3), value: tool)
-        .task(id: document.request) { await document.refreshEstimate() }
+        .task(id: document.estimateKey) { await document.refreshEstimate() }
     }
 }
 
@@ -266,6 +266,7 @@ private struct ToolPanel: View {
             case .crop: CropPanel(document: document)
             case .resize: ResizePanel(document: document)
             case .compress: CompressPanel(document: document)
+            case .compose: ComposePanel(document: document)
             default: InfoPanel(document: document)
             }
         }

@@ -15,6 +15,8 @@ struct ImageStage: View {
                 Group {
                     if isCropping {
                         croppingStage(preview, display: display, available: available)
+                    } else if document.composition != nil {
+                        CompositeStage(document: document, available: available)
                     } else {
                         resultStage(preview, display: display, available: available)
                     }
@@ -185,6 +187,173 @@ private struct ThirdsGrid: Shape {
                 path.move(to: CGPoint(x: rect.minX, y: y))
                 path.addLine(to: CGPoint(x: rect.maxX, y: y))
             }
+        }
+    }
+}
+
+// MARK: - Composite preview
+
+/// A live, approximate preview of the composition from the small
+/// previews; the export renders the same layout at full resolution.
+private struct CompositeStage: View {
+    @Bindable var document: ImageDocument
+    let available: CGSize
+
+    var body: some View {
+        if let preview = document.preview, let display = document.displaySize, let base = document.croppedSize {
+            let crop = document.effectiveCrop ?? PixelRect(x: 0, y: 0, width: display.width, height: display.height)
+            let layout = canvasLayout(base: base)
+            let scale = min(available.width / CGFloat(layout.canvas.width), available.height / CGFloat(layout.canvas.height))
+
+            ZStack(alignment: .topLeading) {
+                backgroundView
+                // The (rotated, cropped) base.
+                // In "match sizes" arrangements the base itself may be scaled.
+                let baseScale = scale * CGFloat(layout.frames[0].width) / CGFloat(crop.width)
+                CroppedBase(preview: preview, orientation: document.geometry.orientation, display: display, crop: crop, scale: baseScale)
+                    .frame(width: CGFloat(layout.frames[0].width) * scale, height: CGFloat(layout.frames[0].height) * scale)
+                    .offset(x: CGFloat(layout.frames[0].x) * scale, y: CGFloat(layout.frames[0].y) * scale)
+
+                if document.composeMode == .layers {
+                    ForEach(document.layers) { layer in
+                        LayerView(document: document, layer: layer, scale: scale, isEditable: document.tool == .compose)
+                    }
+                } else {
+                    ForEach(Array(document.arrangedImages.enumerated()), id: \.element.url) { index, image in
+                        let frame = layout.frames[index + 1]
+                        Group {
+                            if let extra = document.extraPreviews[image.url] {
+                                Image(decorative: extra.cgImage, scale: 1).resizable().interpolation(.high)
+                            } else {
+                                Rectangle().fill(.white.opacity(0.1)).overlay(ProgressView())
+                            }
+                        }
+                        .frame(width: CGFloat(frame.width) * scale, height: CGFloat(frame.height) * scale)
+                        .offset(x: CGFloat(frame.x) * scale, y: CGFloat(frame.y) * scale)
+                    }
+                }
+            }
+            .frame(width: CGFloat(layout.canvas.width) * scale, height: CGFloat(layout.canvas.height) * scale, alignment: .topLeading)
+            .clipped()
+            .shadow(color: .black.opacity(0.5), radius: 24, y: 10)
+        }
+    }
+
+    private func canvasLayout(base: PixelSize) -> ArrangementLayout.Result {
+        if document.composeMode == .layers {
+            return ArrangementLayout.Result(canvas: base, frames: [PixelRect(x: 0, y: 0, width: base.width, height: base.height)])
+        }
+        return ArrangementLayout.layout([base] + document.arrangedImages.map(\.info.displaySize), document.arrangement)
+    }
+
+    @ViewBuilder private var backgroundView: some View {
+        if document.composeMode != .layers {
+            switch document.background {
+            case .transparent: TransparencyPattern()
+            case .color(let r, let g, let b): Color(red: r, green: g, blue: b)
+            }
+        }
+    }
+}
+
+/// The base preview with the user's rotate/flip and crop, filling a frame.
+private struct CroppedBase: View {
+    let preview: PreviewImage
+    let orientation: Orientation
+    let display: PixelSize
+    let crop: PixelRect
+    let scale: CGFloat
+
+    var body: some View {
+        OrientedImage(image: preview, orientation: orientation,
+                      size: CGSize(width: CGFloat(display.width) * scale, height: CGFloat(display.height) * scale))
+            .offset(x: -CGFloat(crop.x) * scale, y: -CGFloat(crop.y) * scale)
+            .frame(width: CGFloat(crop.width) * scale, height: CGFloat(crop.height) * scale, alignment: .topLeading)
+            .clipped()
+    }
+}
+
+/// One overlay layer: drag to move, drag the corner to resize.
+private struct LayerView: View {
+    @Bindable var document: ImageDocument
+    let layer: OverlayLayer
+    let scale: CGFloat
+    let isEditable: Bool
+
+    @State private var moveStart: CGPoint?
+    @State private var resizeStart: Double?
+
+    var body: some View {
+        let isSelected = isEditable && document.selectedLayerID == layer.id
+        let size = CGSize(width: layer.width * scale, height: layer.height * scale)
+        Group {
+            if let preview = document.extraPreviews[layer.image.url] {
+                Image(decorative: preview.cgImage, scale: 1).resizable().interpolation(.high)
+            } else {
+                Rectangle().fill(.white.opacity(0.15))
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .opacity(layer.opacity)
+        .overlay {
+            if isSelected {
+                Rectangle().strokeBorder(Theme.ember, lineWidth: 1.5)
+                    .overlay(alignment: .bottomTrailing) {
+                        Circle().fill(.white).frame(width: 14, height: 14)
+                            .shadow(color: .black.opacity(0.4), radius: 2)
+                            .offset(x: 7, y: 7)
+                            .gesture(resize)
+                    }
+            }
+        }
+        .rotationEffect(.degrees(layer.rotation))
+        .position(x: layer.centerX * scale, y: layer.centerY * scale)
+        .gesture(isEditable ? move : nil)
+        .onTapGesture { if isEditable { document.selectedLayerID = layer.id } }
+    }
+
+    private var move: some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                let start = moveStart ?? CGPoint(x: layer.centerX, y: layer.centerY)
+                if moveStart == nil {
+                    moveStart = start
+                    document.selectedLayerID = layer.id
+                }
+                document.updateLayer(layer.id) {
+                    $0.centerX = (start.x + value.translation.width / scale).rounded()
+                    $0.centerY = (start.y + value.translation.height / scale).rounded()
+                }
+            }
+            .onEnded { _ in moveStart = nil }
+    }
+
+    private var resize: some Gesture {
+        DragGesture(minimumDistance: 1)
+            .onChanged { value in
+                let start = resizeStart ?? layer.width
+                if resizeStart == nil { resizeStart = start }
+                // Dragging the corner outwards grows the layer about its centre.
+                let delta = max(value.translation.width, value.translation.height * layer.aspectRatio) * 2 / scale
+                document.updateLayer(layer.id) { $0.width = max(16, (start + delta).rounded()) }
+            }
+            .onEnded { _ in resizeStart = nil }
+    }
+}
+
+/// Grey checkerboard meaning "transparent".
+struct TransparencyPattern: View {
+    var body: some View {
+        Canvas { context, size in
+            let cell: CGFloat = 10
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(white: 0.85)))
+            var squares = Path()
+            for row in 0...Int(size.height / cell) {
+                for column in 0...Int(size.width / cell) where (row + column) % 2 == 0 {
+                    squares.addRect(CGRect(x: CGFloat(column) * cell, y: CGFloat(row) * cell, width: cell, height: cell))
+                }
+            }
+            context.fill(squares, with: .color(Color(white: 0.7)))
         }
     }
 }

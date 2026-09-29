@@ -134,6 +134,11 @@ public enum ArrangementLayout {
         public var canvas: PixelSize
         /// One frame per input, in canvas pixels.
         public var frames: [PixelRect]
+
+        public init(canvas: PixelSize, frames: [PixelRect]) {
+            self.canvas = canvas
+            self.frames = frames
+        }
     }
 
     public static func layout(_ sizes: [PixelSize], _ arrangement: Arrangement) -> Result {

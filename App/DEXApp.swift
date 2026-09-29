@@ -1,4 +1,5 @@
 import AppKit
+import ImageEngine
 import SwiftUI
 
 @main
@@ -34,22 +35,51 @@ struct DEXApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var document: ImageDocument?
-    private var pending: URL?
+    private var batch: [URL] = []
+    private var batchTask: Task<Void, Never>?
 
     func attach(_ document: ImageDocument) {
         self.document = document
-        if let pending {
-            self.pending = nil
-            Task { await document.open(pending) }
+        scheduleBatch()
+    }
+
+    /// Finder and `open` can deliver several files as separate events, in
+    /// any order, so events arriving close together are handled as one.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        batch.append(contentsOf: urls)
+        scheduleBatch()
+    }
+
+    private func scheduleBatch() {
+        batchTask?.cancel()
+        batchTask = Task {
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled, let document, !batch.isEmpty else { return }
+            let urls = batch
+            batch = []
+            await Self.open(urls, in: document)
         }
     }
 
-    func application(_ application: NSApplication, open urls: [URL]) {
-        guard let url = urls.first else { return }
-        if let document {
-            Task { await document.open(url) }
-        } else {
-            pending = url
+    /// One file opens normally. Several: the largest becomes the base (so a
+    /// logo lands on the photo, not the other way round) and the rest join
+    /// Compose.
+    private static func open(_ urls: [URL], in document: ImageDocument) async {
+        var ordered = urls
+        if urls.count > 1 {
+            var areas: [URL: Int] = [:]
+            for url in urls {
+                let info = try? await ImageEngine.inspectAsync(url: url)
+                areas[url] = info.map { $0.pixelWidth * $0.pixelHeight } ?? 0
+            }
+            if let base = urls.max(by: { areas[$0, default: 0] < areas[$1, default: 0] }) {
+                ordered = [base] + urls.filter { $0 != base }
+            }
+        }
+        await document.open(ordered[0])
+        if ordered.count > 1 {
+            document.tool = .compose
+            await document.addImages(Array(ordered.dropFirst()))
         }
     }
 
