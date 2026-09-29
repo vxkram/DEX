@@ -15,6 +15,7 @@ struct ResultSection: View {
                     Text(verbatim: "Saves as \(plan.request.target.displayName) · \(size.width) × \(size.height)")
                         .font(.technical)
                         .help("Change the format in Convert (⌘1).")
+                    EstimateLine(document: document)
                     PlanSummary(plan: plan, document: document)
                 case .failure(let error):
                     Label(String(describing: error), systemImage: "xmark.octagon")
@@ -187,5 +188,34 @@ struct DismissButton: View {
             .foregroundStyle(.secondary)
             .font(.caption.weight(.semibold))
             .help("Dismiss")
+    }
+}
+
+/// "≈ 2.4 MB · 12% smaller": the measured size of the export.
+struct EstimateLine: View {
+    let document: ImageDocument
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let estimate = document.currentEstimate, let bytes = estimate.bytes {
+                Image(systemName: "doc")
+                    .foregroundStyle(.secondary)
+                Text(verbatim: "≈ " + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
+                    .font(.technical)
+                if let original = document.info?.fileSize, original > 0 {
+                    let change = Double(bytes - original) / Double(original)
+                    Text(verbatim: change.magnitude < 0.005 ? "same size"
+                         : "\(Int((change.magnitude * 100).rounded()))% \(change < 0 ? "smaller" : "larger")")
+                        .font(.technicalSmall)
+                        .foregroundStyle(change > 0.005 ? .orange : change < -0.005 ? .green : .secondary)
+                }
+            } else {
+                ProgressView().controlSize(.mini)
+                Text("Measuring size…")
+                    .font(.technicalSmall)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .help("Measured by running the real export in the background.")
     }
 }

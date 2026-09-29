@@ -49,3 +49,14 @@ Every plan that promises HDR is verified after writing: an output missing its ga
 | **Other formats:** orientation is an exact byte shuffle (`RawBitmap.oriented`) and crop uses `CGImage.cropping` | Straight alpha and 16-bit stay exact, so PNG/TIFF/lossless WebP output is bit-identical to the region (tested) |
 | **Resize** uses vImage Lanczos (`kvImageHighQualityResampling`) in the image's own depth and colour space | Always disclosed as `resampled`. It is never offered as lossless, and the UI refuses to enlarge unless asked |
 | **HDR gain maps** get the same orientation, a crop scaled to their resolution, and a proportional resize | HDR survives HEIC/JPEG/AVIF re-encodes with geometry (tested) |
+
+## Compression (added 2026-09-29)
+
+| Behaviour | Handling |
+|---|---|
+| **Lossless JPEG compression** is a libjpeg-turbo repack: Huffman optimisation, with progressive output 4–5% smaller than baseline on 12 MP photos | `optimize` gives a `.losslessJPEGTransform` without a crop. Pixels are identical (tested) |
+| **Repacking can grow an already-tight small JPEG** | Compression never makes a file bigger: if the optimised output is not smaller, the plain lossless result is written instead |
+| **ImageIO ignores TIFF `Compression` with `AddImageFromSource`, and ignores it when layout tags (tiles, photometric) are copied from the source** | TIFF output always goes through a decoded image with LZW and only the descriptive tags. A 12 MP photo shrinks from 36.9 MB to 10.9 MB losslessly |
+| **HEIC, AVIF and GIF have no lossless repack** | `optimize` leaves them alone (copy or metadata only). "Smaller file" uses the quality slider |
+| **A lower quality on a lossy format re-encodes even into the same format** | Previously JPEG → JPEG at quality 70 was a plain copy (bug) |
+| **Size estimates** come from running the real conversion into a temporary folder (debounced, cancelled when settings change) | Every panel shows the true output size before export, e.g. "≈ 2.3 MB · 4% smaller" |

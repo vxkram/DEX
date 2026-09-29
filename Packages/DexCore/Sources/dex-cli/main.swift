@@ -23,6 +23,7 @@ let usage = """
       --crop WxH+X+Y               Crop in displayed pixels (after rotate/flip)
       --exact-crop                 Crop exactly, even if a lossless JPEG crop would snap
       --resize WxH                 Resize after cropping (resampling is lossy)
+      --optimize                   Compress losslessly (JPEG repack, PNG/TIFF re-compress)
       --allow-lossy                Accept a conversion that loses information
       --overwrite                  Replace an existing output file (never the original)
       --dry-run                    Show the plan without writing anything
@@ -115,6 +116,7 @@ struct ConvertOptions {
     var quality = QualityPreference.maximum
     var metadata = MetadataPolicy.removeLocation
     var geometry = Geometry()
+    var optimize = false
     var allowLossy = false
     var overwrite = false
     var dryRun = false
@@ -177,6 +179,7 @@ func parseConvertOptions(_ arguments: [String]) throws -> ConvertOptions {
             let parts = try value(for: argument).split(separator: "x").compactMap { Int($0) }
             guard parts.count == 2 else { throw UsageError(description: "--resize must look like 1920x1080") }
             options.geometry.resize = PixelSize(width: parts[0], height: parts[1])
+        case "--optimize": options.optimize = true
         case "--allow-lossy": options.allowLossy = true
         case "--overwrite": options.overwrite = true
         case "--dry-run": options.dryRun = true
@@ -202,7 +205,8 @@ func convert(_ arguments: [String]) async -> ExitCode {
     }
     let source = URL(fileURLWithPath: (options.input! as NSString).expandingTildeInPath)
     let request = ConvertRequest(
-        target: options.target!, quality: options.quality, metadata: options.metadata, geometry: options.geometry
+        target: options.target!, quality: options.quality, metadata: options.metadata, geometry: options.geometry,
+        optimize: options.optimize
     )
 
     do {

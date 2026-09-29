@@ -29,17 +29,22 @@ public struct ConvertRequest: Codable, Sendable, Equatable {
     public var quality: QualityPreference
     public var metadata: MetadataPolicy
     public var geometry: Geometry
+    /// Lossless compression: repack the data as small as possible without
+    /// changing a pixel (JPEG Huffman optimisation, PNG/TIFF re-encode).
+    public var optimize: Bool
 
     public init(
         target: ImageFormat,
         quality: QualityPreference = .maximum,
         metadata: MetadataPolicy = .removeLocation,
-        geometry: Geometry = .none
+        geometry: Geometry = .none,
+        optimize: Bool = false
     ) {
         self.target = target
         self.quality = quality
         self.metadata = metadata
         self.geometry = geometry
+        self.optimize = optimize
     }
 }
 
@@ -65,9 +70,9 @@ public enum ConversionStrategy: String, Codable, Sendable {
     case copyFile
     /// Rewrite metadata around the original coded image data.
     case rewriteMetadata
-    /// Crop JPEG coefficients without decoding (libjpeg-turbo), then
-    /// rewrite metadata.
-    case losslessJPEGCrop
+    /// Crop and/or optimise JPEG coefficients without decoding
+    /// (libjpeg-turbo), then rewrite metadata.
+    case losslessJPEGTransform
     /// Decode and encode.
     case reencode
 }
@@ -88,12 +93,13 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
     case noAdditionalLoss
     case orientationApplied
     case cropSnapped(to: PixelRect)
+    case optimisedLosslessly
     case locationRemoved
     case allMetadataRemoved
 
     public var isLoss: Bool {
         switch self {
-        case .noAdditionalLoss, .orientationApplied, .cropSnapped, .locationRemoved, .allMetadataRemoved: false
+        case .noAdditionalLoss, .orientationApplied, .cropSnapped, .optimisedLosslessly, .locationRemoved, .allMetadataRemoved: false
         default: true
         }
     }
@@ -121,9 +127,11 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
         case .resampled(let from, let to):
             "Resized from \(from) to \(to): resampling creates new pixels"
         case .hdrNotKeptByLosslessCrop:
-            "HDR gain map can't be kept by a lossless JPEG crop yet"
+            "HDR gain map can't be kept by a lossless JPEG transform yet"
         case .cropSnapped(let rect):
             "Crop adjusted to \(rect.size) so it stays lossless (JPEG crops start on 8/16-pixel blocks)"
+        case .optimisedLosslessly:
+            "Compressed losslessly: the data is repacked, every pixel stays identical"
         case .orientationApplied:
             "Rotation will be applied to the pixels, because this format can't store orientation"
         case .locationRemoved:
@@ -151,7 +159,7 @@ public struct ConversionPlan: Codable, Sendable, Equatable {
     /// Orientation tag the output must carry. Checked after writing.
     public var outputOrientation: Int
     /// Crop in the space the engine works in: stored pixels for
-    /// `.losslessJPEGCrop`, pixels after `bakedOrientation` for `.reencode`.
+    /// `.losslessJPEGTransform`, pixels after `bakedOrientation` for `.reencode`.
     public var pixelCrop: PixelRect?
     /// Final pixel size after cropping, when resampling.
     public var resize: PixelSize?

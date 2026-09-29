@@ -69,9 +69,15 @@ public enum Planner {
         var outputSize = source.storedSize
         var preservesHDR = source.hasHDRGainMap && target.supportsGainMap
 
+        // A lower quality on a lossy format means the user wants a
+        // re-encode, even into the same format.
+        let wantsLossy = target.hasLossyMode && request.quality != .maximum
+        // Lossless compression only applies where a repack exists.
+        let optimizes = request.optimize && sourceFormat == target && target.canOptimizeLosslessly
+
         // 1. Same format without new pixels: copy, or rewrite metadata
         //    (including a new orientation tag for rotate/flip).
-        if sourceFormat == target && !changesPixels {
+        if sourceFormat == target && !changesPixels && !wantsLossy && !optimizes {
             let changesMetadata = !geometry.orientation.isIdentity
                 || request.metadata == .removeAll
                 || (request.metadata == .removeLocation && source.hasGPS)
@@ -85,19 +91,26 @@ public enum Planner {
             }
         }
 
-        // 2. JPEG crop on the compressed data: no decode, no loss.
-        if strategy == .reencode, sourceFormat == .jpeg, target == .jpeg, let crop, resize == nil,
-           !geometry.exactCrop, let block = source.jpegBlockSize {
-            let stored = snapped(total.inverse.apply(to: crop, in: displaySize), to: block, within: source.storedSize)
-            let shown = total.apply(to: stored, in: source.storedSize)
-            strategy = .losslessJPEGCrop
-            pixelCrop = stored
-            displayCrop = shown
-            outputSize = stored.size
+        // 2. JPEG crop and/or optimisation on the compressed data: no
+        //    decode, no loss.
+        if strategy == .reencode, sourceFormat == .jpeg, target == .jpeg, resize == nil, !wantsLossy,
+           (crop != nil && !geometry.exactCrop) || (crop == nil && optimizes),
+           let block = source.jpegBlockSize {
+            strategy = .losslessJPEGTransform
             outputOrientation = total.exif
-            preservesHDR = false
-            if shown != crop { info.append(.cropSnapped(to: shown)) }
-            if source.hasHDRGainMap { losses.append(.hdrNotKeptByLosslessCrop) }
+            if let crop {
+                let stored = snapped(total.inverse.apply(to: crop, in: displaySize), to: block, within: source.storedSize)
+                let shown = total.apply(to: stored, in: source.storedSize)
+                pixelCrop = stored
+                displayCrop = shown
+                outputSize = stored.size
+                if shown != crop { info.append(.cropSnapped(to: shown)) }
+            }
+            if optimizes { info.append(.optimisedLosslessly) }
+            if source.hasHDRGainMap {
+                preservesHDR = false
+                losses.append(.hdrNotKeptByLosslessCrop)
+            }
         }
 
         var frames = source.frameCount
@@ -144,8 +157,11 @@ public enum Planner {
             if losses.isEmpty && !sourceFormat.supportsLossless && target.supportsLossless {
                 losses.append(.noAdditionalLoss)
             }
+            if optimizes && losses.isEmpty {
+                info.append(.optimisedLosslessly)
+            }
         }
-        if strategy == .losslessJPEGCrop { frames = 1 }
+        if strategy == .losslessJPEGTransform { frames = 1 }
         let notes = losses + info + metadataNotes(source, request.metadata)
 
         return ConversionPlan(

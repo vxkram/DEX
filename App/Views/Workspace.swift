@@ -32,7 +32,7 @@ enum Tool: String, CaseIterable, Identifiable {
         }
     }
 
-    var isAvailable: Bool { [.convert, .crop, .resize, .info].contains(self) }
+    var isAvailable: Bool { [.convert, .crop, .resize, .compress, .info].contains(self) }
 }
 
 /// The open-file layout: preview and dock on the left, the chosen tool's
@@ -66,6 +66,7 @@ struct Workspace: View {
         .overlay(alignment: .top) { TopBar(document: document) }
         .ignoresSafeArea(.container, edges: .top)
         .animation(.spring(duration: 0.3), value: tool)
+        .task(id: document.request) { await document.refreshEstimate() }
     }
 }
 
@@ -264,6 +265,7 @@ private struct ToolPanel: View {
             case .convert: ConvertPanel(document: document)
             case .crop: CropPanel(document: document)
             case .resize: ResizePanel(document: document)
+            case .compress: CompressPanel(document: document)
             default: InfoPanel(document: document)
             }
         }

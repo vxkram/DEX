@@ -72,7 +72,7 @@ struct GeometryPlannerTests {
     @Test func jpegCropIsLosslessAndSnapsToBlocks() throws {
         let crop = PixelRect(x: 100, y: 50, width: 1000, height: 800)
         let result = try plan(info(.jpeg), .jpeg, Geometry(crop: crop))
-        #expect(result.strategy == .losslessJPEGCrop)
+        #expect(result.strategy == .losslessJPEGTransform)
         #expect(result.verdict == .noReencode)
         let snapped = PixelRect(x: 96, y: 48, width: 1004, height: 802)
         #expect(result.pixelCrop == snapped)
@@ -92,7 +92,7 @@ struct GeometryPlannerTests {
         // Stored 4032×3024 with orientation 6: displayed 3024×4032.
         let crop = PixelRect(x: 0, y: 0, width: 1024, height: 2048)
         let result = try plan(info(.jpeg, orientation: 6), .jpeg, Geometry(crop: crop))
-        #expect(result.strategy == .losslessJPEGCrop)
+        #expect(result.strategy == .losslessJPEGTransform)
         #expect(result.outputOrientation == 6)
         #expect(result.pixelCrop == PixelRect(x: 0, y: 2000, width: 2048, height: 1024))
         #expect(result.outputDisplaySize == PixelSize(width: 1024, height: 2048))

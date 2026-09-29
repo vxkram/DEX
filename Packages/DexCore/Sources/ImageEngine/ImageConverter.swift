@@ -44,20 +44,64 @@ extension ImageEngine {
     ) async throws {
         try await MediaWork.run { token in
             try SafeOutput.write(to: destination, source: source, overwrite: overwrite, cancellation: token) { temporary in
-                switch plan.strategy {
-                case .copyFile:
-                    try FileManager.default.copyItem(at: source, to: temporary)
-                case .rewriteMetadata:
-                    try rewriteMetadata(source, plan: plan, to: temporary)
-                case .losslessJPEGCrop:
-                    try losslessJPEGCrop(source, plan: plan, to: temporary)
-                case .reencode:
-                    try reencode(source, plan: plan, to: temporary, token: token, progress: progress)
-                }
-                try verify(temporary, against: plan)
+                try write(plan, from: source, to: temporary, token: token, progress: progress)
+                try keepSmallerIfOptimizing(plan, from: source, output: temporary, token: token)
                 progress?(1)
             }
         }
+    }
+
+    private static func write(
+        _ plan: ConversionPlan, from source: URL, to temporary: URL,
+        token: CancellationToken, progress: (@Sendable (Double) -> Void)?
+    ) throws {
+        switch plan.strategy {
+        case .copyFile:
+            try FileManager.default.copyItem(at: source, to: temporary)
+        case .rewriteMetadata:
+            try rewriteMetadata(source, plan: plan, to: temporary)
+        case .losslessJPEGTransform:
+            try losslessJPEGTransform(source, plan: plan, to: temporary)
+        case .reencode:
+            try reencode(source, plan: plan, to: temporary, token: token, progress: progress)
+        }
+        try verify(temporary, against: plan)
+    }
+
+    /// Lossless compression must never make a file bigger: if it didn't
+    /// help (e.g. an already well-packed small JPEG), write the same result
+    /// without the repack instead.
+    private static func keepSmallerIfOptimizing(
+        _ plan: ConversionPlan, from source: URL, output: URL, token: CancellationToken
+    ) throws {
+        guard plan.request.optimize, plan.pixelCrop == nil, plan.resize == nil,
+              fileSize(output) >= fileSize(source)
+        else { return }
+        var request = plan.request
+        request.optimize = false
+        let fallback = try Planner.plan(try inspect(url: source), request, writable: writableFormats())
+        guard fallback.strategy != .reencode || fallback.verdict != .lossy else { return }
+        try FileManager.default.removeItem(at: output)
+        try write(fallback, from: source, to: output, token: token, progress: nil)
+    }
+
+    private static func fileSize(_ url: URL) -> Int {
+        (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+    }
+
+    /// The exact size the export would have: the real conversion, written
+    /// to a private temporary folder and deleted again.
+    public static func estimatedSize(_ source: URL, plan: ConversionPlan) async throws -> Int64 {
+        if plan.strategy == .copyFile {
+            return Int64((try? source.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("dex-estimate-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let output = folder.appendingPathComponent("estimate.\(plan.request.target.preferredFileExtension)")
+        try await convert(source, plan: plan, to: output)
+        return Int64(try output.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
     }
 
     // MARK: - Strategies
@@ -103,12 +147,13 @@ extension ImageEngine {
         return result
     }
 
-    /// Crops the JPEG's compressed data (no decode), then writes the
-    /// original metadata, filtered by the policy, around it with ImageIO.
-    private static func losslessJPEGCrop(_ url: URL, plan: ConversionPlan, to temporary: URL) throws {
-        guard let rect = plan.pixelCrop else { throw ConvertError.encodeFailed(.jpeg, reason: "no crop") }
+    /// Crops and/or optimises the JPEG's compressed data (no decode), then
+    /// writes the original metadata, filtered by the policy, around it.
+    /// Optimised output is progressive, which is usually smaller.
+    private static func losslessJPEGTransform(_ url: URL, plan: ConversionPlan, to temporary: URL) throws {
         let data = try Data(contentsOf: url, options: .alwaysMapped)
-        let cropped = try JPEGLossless.crop(data, to: rect, progressive: JPEGLossless.info(of: data)?.progressive ?? false)
+        let progressive = plan.request.optimize || (JPEGLossless.info(of: data)?.progressive ?? false)
+        let cropped = try JPEGLossless.transform(data, crop: plan.pixelCrop, progressive: progressive)
         let original = try openSource(url)
         guard let croppedSource = CGImageSourceCreateWithData(cropped as CFData, nil),
               let destination = CGImageDestinationCreateWithURL(temporary as CFURL, ImageFormat.jpeg.typeIdentifier as CFString, 1, nil)
@@ -211,8 +256,22 @@ extension ImageEngine {
                 properties[kCGImagePropertyMakerAppleDictionary] = hdrBrightness
             }
             properties[kCGImagePropertyOrientation] = plan.outputOrientation
+            if target == .tiff {
+                // LZW: lossless and far smaller than uncompressed TIFF.
+                var tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
+                // Layout tags copied from the source (tiling, photometric)
+                // make ImageIO silently write uncompressed; only the
+                // descriptive tags (camera, date) are carried over.
+                for key in [kCGImagePropertyTIFFTileWidth, kCGImagePropertyTIFFTileLength, kCGImagePropertyTIFFPhotometricInterpretation] {
+                    tiff[key] = nil
+                }
+                tiff[kCGImagePropertyTIFFCompression] = 5
+                properties[kCGImagePropertyTIFFDictionary] = tiff
+            }
             let changesPixels = plan.appliesOrientation || plan.pixelCrop != nil || plan.resize != nil
-            if changesPixels || plan.request.metadata == .removeAll {
+            // TIFF compression is only honoured for decoded images, not
+            // AddImageFromSource (measured on macOS 27: 36.9 MB vs 10.7 MB).
+            if changesPixels || plan.request.metadata == .removeAll || target == .tiff {
                 var image = try decodedFrame(source, index: index, name: url.lastPathComponent)
                 if changesPixels {
                     image = try geometryApplied(to: image, plan: plan)

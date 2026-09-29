@@ -103,6 +103,16 @@ public enum ImageFormat: String, Codable, Sendable, CaseIterable {
         }
     }
 
+    /// Whether the file can be made smaller without changing a pixel:
+    /// JPEG by repacking its entropy-coded data, PNG and TIFF by
+    /// re-compressing their lossless data.
+    public var canOptimizeLosslessly: Bool {
+        switch self {
+        case .jpeg, .png, .tiff: true
+        default: false
+        }
+    }
+
     /// Whether the format only stores RGB, so grayscale and CMYK images must
     /// be converted first.
     public var requiresRGB: Bool { self == .webp }

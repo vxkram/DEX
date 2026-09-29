@@ -29,7 +29,11 @@ final class ImageDocument {
     /// Rotate/flip, crop and resize, all in display space.
     var geometry = Geometry()
     var cropAspect: CropAspect = .free
+    /// Lossless compression (Compress → Lossless).
+    var optimize = false
     var exportState: ExportState = .idle
+    /// The real output size for the current settings, when known.
+    private(set) var estimate: SizeEstimate?
 
     /// The tool panel that is open (nil = none).
     var tool: Tool? = .convert
@@ -53,7 +57,7 @@ final class ImageDocument {
     // MARK: - Derived state
 
     var request: ConvertRequest {
-        ConvertRequest(target: target, quality: quality, metadata: metadata, geometry: geometry)
+        ConvertRequest(target: target, quality: quality, metadata: metadata, geometry: geometry, optimize: optimize)
     }
 
     /// Size as shown after the file's orientation and the user's rotate/flip.
@@ -111,6 +115,9 @@ final class ImageDocument {
         preview = nil
         geometry = Geometry()
         cropAspect = .free
+        optimize = false
+        quality = .maximum
+        estimate = nil
         cropDrag = nil
         loupeTask?.cancel()
         loupeImage = nil
@@ -143,6 +150,30 @@ final class ImageDocument {
     }
 
     // MARK: - Exporting
+
+    /// Runs the real conversion in the background to measure the output
+    /// size. Called from a view task keyed on the request, so a newer
+    /// request cancels an older estimate.
+    func refreshEstimate() async {
+        guard let sourceURL, let plan else {
+            estimate = nil
+            return
+        }
+        let request = plan.request
+        estimate = SizeEstimate(request: request, bytes: nil)
+        do {
+            try await Task.sleep(for: .milliseconds(350))
+            let bytes = try await ImageEngine.estimatedSize(sourceURL, plan: plan)
+            if self.request == request { estimate = SizeEstimate(request: request, bytes: bytes) }
+        } catch {
+            if self.request == request, !(error is CancellationError) { estimate = nil }
+        }
+    }
+
+    /// The estimate if it belongs to the current settings.
+    var currentEstimate: SizeEstimate? {
+        estimate?.request == request ? estimate : nil
+    }
 
     /// Export always goes through Convert, where format, metadata and
     /// quality are chosen: from any other tool it switches there first.
@@ -245,4 +276,10 @@ struct LoupeImage {
     let url: URL
     let orientation: Orientation
     let image: PreviewImage
+}
+
+struct SizeEstimate: Equatable {
+    let request: ConvertRequest
+    /// nil while measuring.
+    let bytes: Int64?
 }

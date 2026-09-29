@@ -59,7 +59,7 @@ struct GeometryTests {
         let crop = PixelRect(x: 32, y: 48, width: 160, height: 96)
 
         let (output, plan) = try await run(source, .jpeg, Geometry(crop: crop))
-        #expect(plan.strategy == .losslessJPEGCrop)
+        #expect(plan.strategy == .losslessJPEGTransform)
         let info = try ImageEngine.inspect(url: output)
         #expect(info.pixelWidth == 160 && info.pixelHeight == 96)
         #expect(!info.hasGPS)
@@ -81,7 +81,7 @@ struct GeometryTests {
         // Displayed 128×256; crop the lower-left block region.
         let crop = PixelRect(x: 0, y: 128, width: 64, height: 128)
         let (output, plan) = try await run(source, .jpeg, Geometry(crop: crop))
-        #expect(plan.strategy == .losslessJPEGCrop)
+        #expect(plan.strategy == .losslessJPEGTransform)
         let info = try ImageEngine.inspect(url: output)
         #expect(info.orientation == 6)
         #expect(info.displayWidth == 64 && info.displayHeight == 128)

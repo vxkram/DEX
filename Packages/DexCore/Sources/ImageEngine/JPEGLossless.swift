@@ -22,16 +22,18 @@ enum JPEGLossless {
         )
     }
 
-    /// Crops on block boundaries (the rect must already be snapped) and
-    /// Huffman-optimises the result. Only ICC profiles are carried; the
-    /// caller rewrites the rest of the metadata.
-    static func crop(_ data: Data, to rect: PixelRect, progressive: Bool) throws -> Data {
+    /// Optionally crops on block boundaries (the rect must already be
+    /// snapped), and always Huffman-optimises the result. Only ICC profiles
+    /// are carried; the caller rewrites the rest of the metadata.
+    static func transform(_ data: Data, crop rect: PixelRect?, progressive: Bool) throws -> Data {
         var options = dx_jpeg_options()
-        options.crop = 1
-        options.crop_x = UInt32(rect.x)
-        options.crop_y = UInt32(rect.y)
-        options.crop_width = UInt32(rect.width)
-        options.crop_height = UInt32(rect.height)
+        if let rect {
+            options.crop = 1
+            options.crop_x = UInt32(rect.x)
+            options.crop_y = UInt32(rect.y)
+            options.crop_width = UInt32(rect.width)
+            options.crop_height = UInt32(rect.height)
+        }
         options.optimize = 1
         options.progressive = progressive ? 1 : 0
 
