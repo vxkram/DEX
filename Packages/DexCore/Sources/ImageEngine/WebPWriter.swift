@@ -20,9 +20,11 @@ enum WebPWriter {
         token: CancellationToken,
         progress: (@Sendable (Double) -> Void)?
     ) throws {
-        let image = try ImageEngine.geometryApplied(
-            to: ImageEngine.decodedFrame(source, index: 0, name: name), plan: plan
-        )
+        let image = if let composition = plan.request.composition, !composition.isEmpty {
+            try Compositor.render(source, plan: plan, name: name, token: token)
+        } else {
+            try ImageEngine.geometryApplied(to: ImageEngine.decodedFrame(source, index: 0, name: name), plan: plan)
+        }
         try token.check()
 
         let colorSpace = rgbColorSpace(of: image)

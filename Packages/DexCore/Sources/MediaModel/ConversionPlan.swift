@@ -32,19 +32,23 @@ public struct ConvertRequest: Codable, Sendable, Equatable {
     /// Lossless compression: repack the data as small as possible without
     /// changing a pixel (JPEG Huffman optimisation, PNG/TIFF re-encode).
     public var optimize: Bool
+    /// Extra images layered on top of, or arranged next to, the source.
+    public var composition: Composition?
 
     public init(
         target: ImageFormat,
         quality: QualityPreference = .maximum,
         metadata: MetadataPolicy = .removeLocation,
         geometry: Geometry = .none,
-        optimize: Bool = false
+        optimize: Bool = false,
+        composition: Composition? = nil
     ) {
         self.target = target
         self.quality = quality
         self.metadata = metadata
         self.geometry = geometry
         self.optimize = optimize
+        self.composition = composition
     }
 }
 
@@ -89,17 +93,21 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
     case metadataEditRequiresReencode(ImageFormat)
     case resampled(from: PixelSize, to: PixelSize)
     case hdrNotKeptByLosslessCrop
+    case imageResampled(name: String, to: PixelSize)
+    case hdrNotKeptInComposite
     // Information
     case noAdditionalLoss
     case orientationApplied
     case cropSnapped(to: PixelRect)
     case optimisedLosslessly
+    case composited(images: Int)
     case locationRemoved
     case allMetadataRemoved
 
     public var isLoss: Bool {
         switch self {
-        case .noAdditionalLoss, .orientationApplied, .cropSnapped, .optimisedLosslessly, .locationRemoved, .allMetadataRemoved: false
+        case .noAdditionalLoss, .orientationApplied, .cropSnapped, .optimisedLosslessly, .composited,
+             .locationRemoved, .allMetadataRemoved: false
         default: true
         }
     }
@@ -130,6 +138,12 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
             "HDR gain map can't be kept by a lossless JPEG transform yet"
         case .cropSnapped(let rect):
             "Crop adjusted to \(rect.size) so it stays lossless (JPEG crops start on 8/16-pixel blocks)"
+        case .imageResampled(let name, let size):
+            "\(name) is scaled to \(size) (resampled)"
+        case .hdrNotKeptInComposite:
+            "HDR can't be kept when combining images, so the result is SDR"
+        case .composited(let count):
+            "Combines \(count + 1) images; formats don't matter, colours are matched"
         case .optimisedLosslessly:
             "Compressed losslessly: the data is repacked, every pixel stays identical"
         case .orientationApplied:

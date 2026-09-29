@@ -268,15 +268,19 @@ extension ImageEngine {
                 tiff[kCGImagePropertyTIFFCompression] = 5
                 properties[kCGImagePropertyTIFFDictionary] = tiff
             }
-            let changesPixels = plan.appliesOrientation || plan.pixelCrop != nil || plan.resize != nil
+            let composes = plan.request.composition.map { !$0.isEmpty } ?? false
+            let changesPixels = composes || plan.appliesOrientation || plan.pixelCrop != nil || plan.resize != nil
             // TIFF compression is only honoured for decoded images, not
             // AddImageFromSource (measured on macOS 27: 36.9 MB vs 10.7 MB).
             if changesPixels || plan.request.metadata == .removeAll || target == .tiff {
-                var image = try decodedFrame(source, index: index, name: url.lastPathComponent)
-                if changesPixels {
-                    image = try geometryApplied(to: image, plan: plan)
-                    properties = removingStaleSize(properties)
+                var image: CGImage
+                if composes {
+                    image = try Compositor.render(source, plan: plan, name: url.lastPathComponent, token: token)
+                } else {
+                    image = try decodedFrame(source, index: index, name: url.lastPathComponent)
+                    if changesPixels { image = try geometryApplied(to: image, plan: plan) }
                 }
+                if changesPixels { properties = removingStaleSize(properties) }
                 CGImageDestinationAddImage(destination, image, properties as CFDictionary)
             } else {
                 CGImageDestinationAddImageFromSource(destination, source, index, properties as CFDictionary)

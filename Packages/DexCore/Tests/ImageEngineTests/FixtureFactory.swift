@@ -30,6 +30,8 @@ struct FixtureFactory: Sendable {
         var frames = 1
         /// Deterministic per-pixel noise, like a real photo's grain.
         var noise = false
+        /// Fill with one colour instead of the gradient (0...1 sRGB).
+        var solid: (Double, Double, Double)?
     }
 
     /// Encodes on MediaWork's queue: ImageIO's HEIF/AVIF encoder deadlocks
@@ -119,6 +121,12 @@ struct FixtureFactory: Sendable {
             bitmapInfo: bitmapInfo
         ) else {
             throw FixtureError.context
+        }
+        if let (r, g, b) = spec.solid {
+            context.setFillColor(red: r, green: g, blue: b, alpha: spec.alpha ? 0.5 : 1)
+            context.fill(CGRect(x: 0, y: 0, width: spec.width, height: spec.height))
+            guard let image = context.makeImage() else { throw FixtureError.context }
+            return image
         }
         // A simple gradient plus a seed-dependent block, so frames differ.
         for x in 0..<spec.width {

@@ -59,6 +59,13 @@ public enum Planner {
         let resize = geometry.resize.flatMap { $0 == croppedSize || $0.width < 1 || $0.height < 1 ? nil : $0 }
         let changesPixels = crop != nil || resize != nil
 
+        if let composition = request.composition, !composition.isEmpty {
+            return compositePlan(
+                source, sourceFormat: sourceFormat, request: request, composition: composition,
+                orientation: total, crop: crop, croppedSize: croppedSize, resize: resize
+            )
+        }
+
         var strategy = ConversionStrategy.reencode
         var losses: [QualityNote] = []
         var info: [QualityNote] = []
@@ -180,6 +187,83 @@ public enum Planner {
             expectedWidth: outputSize.width,
             expectedHeight: outputSize.height,
             expectedFrameCount: frames
+        )
+    }
+
+    /// Combining images always creates new pixels: re-encode, upright,
+    /// with every scaled input and lost property disclosed.
+    private static func compositePlan(
+        _ source: MediaInfo, sourceFormat: ImageFormat, request: ConvertRequest, composition: Composition,
+        orientation: Orientation, crop: PixelRect?, croppedSize: PixelSize, resize: PixelSize?
+    ) -> ConversionPlan {
+        let target = request.target
+        var losses: [QualityNote] = []
+        var hasTransparency = source.hasAlpha
+        let extras = composition.extraImages
+
+        let canvas: PixelSize
+        switch composition {
+        case .layers(let layers):
+            canvas = croppedSize
+            for layer in layers where layer.isResampled {
+                losses.append(.imageResampled(
+                    name: layer.image.info.fileName,
+                    to: PixelSize(width: Int(layer.width.rounded()), height: Int(layer.height.rounded()))
+                ))
+            }
+        case .arrangement(let arrangement):
+            let sizes = [croppedSize] + arrangement.images.map(\.info.displaySize)
+            let result = ArrangementLayout.layout(sizes, arrangement)
+            canvas = result.canvas
+            let names = [source.fileName] + arrangement.images.map(\.info.fileName)
+            for (index, frame) in result.frames.enumerated() where frame.size != sizes[index] {
+                losses.append(.imageResampled(name: names[index], to: frame.size))
+            }
+            // Over a colour background everything ends up opaque. Over a
+            // transparent one, see-through inputs and uncovered gaps stay so.
+            if arrangement.background == .transparent {
+                let covered = result.frames.map { $0.width * $0.height }.reduce(0, +)
+                hasTransparency = source.hasAlpha || extras.contains { $0.info.hasAlpha }
+                    || covered < canvas.width * canvas.height
+            } else {
+                hasTransparency = false
+            }
+        }
+
+        var lossyQuality: Double?
+        let lossyWebP = target == .webp && request.quality != .maximum
+        if (!target.supportsLossless && target != .gif) || lossyWebP {
+            lossyQuality = request.quality.lossyValue
+            losses.insert(.lossyEncode(target, quality: request.quality.lossyValue), at: 0)
+        }
+        if let resize { losses.append(.resampled(from: canvas, to: resize)) }
+        if target == .gif { losses.append(.paletteLimited) }
+        if hasTransparency && !target.supportsAlpha { losses.append(.transparencyFlattened) }
+        if source.isAnimated { losses.append(.animationFirstFrameOnly(frames: source.frameCount)) }
+        let depth = ([source] + extras.map(\.info)).compactMap(\.bitsPerComponent).max() ?? 8
+        if depth > target.maxBitsPerComponent {
+            losses.append(.bitDepthReduced(from: depth, to: target.maxBitsPerComponent))
+        }
+        if source.hasHDRGainMap || extras.contains(where: { $0.info.hasHDRGainMap }) {
+            losses.append(.hdrNotKeptInComposite)
+        }
+        let output = resize ?? canvas
+        return ConversionPlan(
+            request: request,
+            strategy: .reencode,
+            verdict: .noReencode,
+            notes: losses + [.composited(images: extras.count)] + metadataNotes(source, request.metadata),
+            lossyQuality: lossyQuality,
+            losslessAlternative: nil,
+            preservesHDR: false,
+            bakedOrientation: orientation.exif,
+            outputOrientation: 1,
+            pixelCrop: crop,
+            resize: resize,
+            displayCrop: crop,
+            expectedWidth: output.width,
+            expectedHeight: output.height,
+            expectedFrameCount: 1
         )
     }
 
