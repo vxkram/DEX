@@ -41,33 +41,66 @@ public enum SafeOutput {
         cancellation: CancellationToken? = nil,
         _ produce: (URL) throws -> Void
     ) throws {
-        let fileManager = FileManager.default
-        let folder = destination.deletingLastPathComponent()
-        var isDirectory: ObjCBool = false
-        guard fileManager.fileExists(atPath: folder.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            throw OutputError.folderMissing(folder.path)
-        }
-        if isSameFile(destination, source) {
-            throw OutputError.wouldOverwriteSource(source.lastPathComponent)
-        }
-        let exists = fileManager.fileExists(atPath: destination.path)
-        if exists && !overwrite {
-            throw OutputError.destinationExists(destination.lastPathComponent)
-        }
-
-        let scratch = try fileManager.url(
-            for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: folder, create: true
-        )
-        defer { try? fileManager.removeItem(at: scratch) }
-        let temporary = scratch.appendingPathComponent(destination.lastPathComponent)
-
-        try produce(temporary)
+        let staging = try Staging(destination: destination, source: source, overwrite: overwrite)
+        defer { staging.cleanUp() }
+        try produce(staging.temporary)
         try cancellation?.check()
+        try staging.commit()
+    }
 
-        if exists {
-            _ = try fileManager.replaceItemAt(destination, withItemAt: temporary)
-        } else {
-            try fileManager.moveItem(at: temporary, to: destination)
+    /// `write` for producers that are asynchronous (AVFoundation exports).
+    public static func write(
+        to destination: URL,
+        source: URL,
+        overwrite: Bool = false,
+        cancellation: CancellationToken? = nil,
+        _ produce: (URL) async throws -> Void
+    ) async throws {
+        let staging = try Staging(destination: destination, source: source, overwrite: overwrite)
+        defer { staging.cleanUp() }
+        try await produce(staging.temporary)
+        try cancellation?.check()
+        try Task.checkCancellation()
+        try staging.commit()
+    }
+
+    private struct Staging {
+        let destination: URL
+        let scratch: URL
+        let temporary: URL
+        let exists: Bool
+
+        init(destination: URL, source: URL, overwrite: Bool) throws {
+            let fileManager = FileManager.default
+            let folder = destination.deletingLastPathComponent()
+            var isDirectory: ObjCBool = false
+            guard fileManager.fileExists(atPath: folder.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+                throw OutputError.folderMissing(folder.path)
+            }
+            if SafeOutput.isSameFile(destination, source) {
+                throw OutputError.wouldOverwriteSource(source.lastPathComponent)
+            }
+            exists = fileManager.fileExists(atPath: destination.path)
+            if exists && !overwrite {
+                throw OutputError.destinationExists(destination.lastPathComponent)
+            }
+            self.destination = destination
+            scratch = try fileManager.url(
+                for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: folder, create: true
+            )
+            temporary = scratch.appendingPathComponent(destination.lastPathComponent)
+        }
+
+        func commit() throws {
+            if exists {
+                _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
+            } else {
+                try FileManager.default.moveItem(at: temporary, to: destination)
+            }
+        }
+
+        func cleanUp() {
+            try? FileManager.default.removeItem(at: scratch)
         }
     }
 

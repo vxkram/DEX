@@ -8,7 +8,14 @@ let package = Package(
         .library(name: "MediaModel", targets: ["MediaModel"]),
         .library(name: "ImageEngine", targets: ["ImageEngine"]),
         .library(name: "JobSystem", targets: ["JobSystem"]),
+        .library(name: "AudioEngine", targets: ["AudioEngine"]),
+        .library(name: "Downloader", targets: ["Downloader"]),
+        .library(name: "AudioTagging", targets: ["AudioTagging"]),
         .executable(name: "dex", targets: ["dex-cli"]),
+    ],
+    dependencies: [
+        // LAME, the MP3 encoder: LGPL, so it is its own dynamic library.
+        .package(path: "../Lame"),
     ],
     targets: [
         // Pure value types and quality rules. Foundation only, so it stays portable.
@@ -77,9 +84,20 @@ let package = Package(
         ),
         // ImageIO / Core Image backed processing.
         .target(name: "ImageEngine", dependencies: ["MediaModel", "JobSystem", "CWebP", "CJPEGTurbo"]),
-        .executableTarget(name: "dex-cli", dependencies: ["MediaModel", "ImageEngine", "JobSystem"]),
+        // AVFoundation / AudioToolbox audio: inspect, waveform, lossless
+        // trims (MP3 frame copy, M4A passthrough, PCM) and encoding.
+        .target(name: "AudioEngine", dependencies: ["MediaModel", "JobSystem", "AudioTagging", .product(name: "Lame", package: "Lame")]),
+        // Title, artist, album and cover art: ID3v2, FLAC blocks, M4A
+        // metadata. Separate so the Downloader service can tag without LAME.
+        .target(name: "AudioTagging", dependencies: ["MediaModel"]),
+        // Audio from YouTube links via yt-dlp, fetched on first use. The only
+        // code in DEX that uses the network.
+        .target(name: "Downloader", dependencies: ["JobSystem", "MediaModel", "AudioTagging"]),
+        .executableTarget(name: "dex-cli", dependencies: ["MediaModel", "ImageEngine", "JobSystem", "AudioEngine"]),
         .testTarget(name: "MediaModelTests", dependencies: ["MediaModel"]),
         .testTarget(name: "JobSystemTests", dependencies: ["JobSystem"]),
         .testTarget(name: "ImageEngineTests", dependencies: ["ImageEngine", "MediaModel", "JobSystem"]),
+        .testTarget(name: "AudioEngineTests", dependencies: ["AudioEngine", "AudioTagging", "MediaModel", "JobSystem"]),
+        .testTarget(name: "DownloaderTests", dependencies: ["Downloader"]),
     ]
 )
