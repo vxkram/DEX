@@ -220,6 +220,31 @@ public final class PDFEditor {
         return try? Data(contentsOf: url)
     }
 
+    /// Compresses PDF data with its own PDFKit document, so it can run off
+    /// the main thread while the editor stays in use.
+    public static func compress(_ data: Data, _ compression: Compression) async throws -> Data {
+        guard compression != .none else { return data }
+        return try await MediaWork.run { _ in
+            guard let copy = PDFDocument(data: data), let filter = compression.filter else {
+                throw ConvertError.encodeFailed(.jpeg, reason: "could not compress the PDF")
+            }
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("dex-\(UUID().uuidString).pdf")
+            defer { try? FileManager.default.removeItem(at: url) }
+            guard copy.write(to: url, withOptions: [PDFDocumentWriteOption(rawValue: "QuartzFilter"): filter]) else {
+                throw ConvertError.encodeFailed(.jpeg, reason: "could not compress the PDF")
+            }
+            return try Data(contentsOf: url)
+        }
+    }
+
+    /// Displayed size (rotation applied) of each page.
+    public var pageSizes: [CGSize] {
+        (0..<pageCount).compactMap { document.page(at: $0) }.map { page in
+            let box = page.bounds(for: .cropBox).size
+            return page.rotation % 180 == 0 ? box : CGSize(width: box.height, height: box.width)
+        }
+    }
+
     /// Writes data safely (temporary file, atomic move), never over `source`.
     public static func save(_ data: Data, to destination: URL, source: URL, overwrite: Bool) throws {
         try SafeOutput.write(to: destination, source: source, overwrite: overwrite) { temporary in

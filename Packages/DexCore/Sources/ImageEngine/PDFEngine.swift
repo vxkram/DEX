@@ -30,6 +30,14 @@ public struct PDFInfo: Sendable, Equatable {
     /// Page sizes in points (1/72 inch), rotation applied.
     public var pageSizes: [CGSize]
     public var isEncrypted: Bool
+
+    public init(fileName: String, fileSize: Int64, pageCount: Int, pageSizes: [CGSize], isEncrypted: Bool) {
+        self.fileName = fileName
+        self.fileSize = fileSize
+        self.pageCount = pageCount
+        self.pageSizes = pageSizes
+        self.isEncrypted = isEncrypted
+    }
 }
 
 /// Images → PDF and PDF → images.

@@ -11,7 +11,7 @@ struct PDFPanel: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     if document.isPDFDocument {
-                        PDFToImages(document: document)
+                        PDFDocumentPanel(document: document)
                     } else {
                         ImagesToPDF(document: document)
                     }
@@ -27,7 +27,7 @@ struct PDFPanel: View {
 
 // MARK: - PDF → images
 
-private struct PDFToImages: View {
+struct PDFToImages: View {
     @Bindable var document: ImageDocument
 
     var body: some View {
@@ -35,15 +35,15 @@ private struct PDFToImages: View {
             VStack(alignment: .leading, spacing: 8) {
                 PanelSectionHeader("Pages")
                 HStack {
-                    Text(verbatim: "\(document.selectedPages.count) of \(info.pageCount) selected")
+                    Text(verbatim: "\(document.selectedIndices.count) of \(info.pageCount) selected")
                         .font(.technical)
                     Spacer()
-                    Button("All") { document.selectedPages = Set(1...info.pageCount) }
+                    Button("All") { document.selectAllPages() }
                         .buttonStyle(.link).tint(Theme.ember)
-                    Button("None") { document.selectedPages = [] }
+                    Button("None") { document.selectNoPages() }
                         .buttonStyle(.link).tint(Theme.ember)
                 }
-                Explanation("Click pages in the preview to choose which ones to export.")
+                Explanation("With nothing selected, every page is exported. Click pages to pick some.")
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -263,7 +263,7 @@ private struct PDFFooter: View {
             case .saved(let url):
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                    Text(document.isPDFDocument ? "Pages exported" : url.lastPathComponent)
+                    Text(document.isPDFDocument && document.pdfMode == .images ? "Pages exported" : url.lastPathComponent)
                         .font(.technicalSmall).lineLimit(1).truncationMode(.middle)
                     Spacer()
                     Button("Show in Finder") { document.revealInFinder(url) }
@@ -283,85 +283,28 @@ private struct PDFFooter: View {
             }
 
             Button {
-                if document.isPDFDocument { document.exportPagesToFolder() } else { document.presentPDFSavePanel() }
+                if !document.isPDFDocument {
+                    document.presentPDFSavePanel()
+                } else if document.pdfMode == .images {
+                    document.exportPagesToFolder()
+                } else {
+                    document.presentSaveEditedPDFPanel()
+                }
             } label: {
-                Text(document.isPDFDocument
-                     ? "Export \(document.selectedPages.count) Page\(document.selectedPages.count == 1 ? "" : "s")…"
-                     : "Save as PDF…")
+                Text(!document.isPDFDocument ? "Save as PDF…"
+                     : document.pdfMode == .images
+                        ? (document.selectedIndices.isEmpty ? "Export All Pages…"
+                           : "Export \(document.selectedIndices.count) Page\(document.selectedIndices.count == 1 ? "" : "s")…")
+                        : "Save PDF…")
                     .font(.headline)
                     .frame(maxWidth: .infinity, minHeight: 30)
             }
             .buttonStyle(.glassProminent)
             .tint(Theme.ember)
             .controlSize(.large)
-            .disabled(document.isExporting || (document.isPDFDocument && document.selectedPages.isEmpty))
+            .disabled(document.isExporting)
         }
         .padding(16)
-    }
-}
-
-// MARK: - Page grid (preview area for PDFs)
-
-struct PageGrid: View {
-    @Bindable var document: ImageDocument
-
-    var body: some View {
-        if let info = document.pdfInfo {
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 18)], spacing: 18) {
-                    ForEach(1...info.pageCount, id: \.self) { page in
-                        PageTile(page: page, size: info.pageSizes[page - 1], thumbnail: document.pageThumbnails[page],
-                                 isSelected: document.selectedPages.contains(page)) {
-                            document.togglePage(page)
-                        }
-                    }
-                }
-                .padding(24)
-            }
-            .scrollIndicators(.automatic)
-        } else if document.needsPDFPassword {
-            ContentUnavailableView("Password required", systemImage: "lock.fill",
-                                   description: Text("This PDF is protected."))
-        } else {
-            ProgressView().controlSize(.large)
-        }
-    }
-}
-
-private struct PageTile: View {
-    let page: Int
-    let size: CGSize
-    let thumbnail: PDFEngine.CGImageBox?
-    let isSelected: Bool
-    let toggle: () -> Void
-
-    var body: some View {
-        VStack(spacing: 8) {
-            ZStack(alignment: .topTrailing) {
-                Group {
-                    if let thumbnail {
-                        Image(decorative: thumbnail.image, scale: 1).resizable().interpolation(.high)
-                    } else {
-                        Rectangle().fill(.white.opacity(0.9)).overlay(ProgressView().controlSize(.small))
-                    }
-                }
-                .aspectRatio(size.width / max(size.height, 1), contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
-                .opacity(isSelected ? 1 : 0.45)
-
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isSelected ? Theme.ember : .white.opacity(0.8))
-                    .background(Circle().fill(.black.opacity(0.35)))
-                    .padding(6)
-            }
-            Text(verbatim: "\(page)").font(.technicalSmall).foregroundStyle(.secondary)
-        }
-        .contentShape(Rectangle())
-        .onTapGesture(perform: toggle)
-        .accessibilityLabel("Page \(page)")
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 }
 

@@ -3,6 +3,7 @@ import ImageEngine
 import JobSystem
 import MediaModel
 import Observation
+import PDFKit
 import UniformTypeIdentifiers
 
 /// The file currently open in the window and the conversion being set up.
@@ -39,8 +40,22 @@ final class ImageDocument {
     var needsPDFPassword = false
     var pdfPasswordError: String?
     @ObservationIgnored private var pdfPassword: String?
-    private(set) var pageThumbnails: [Int: PDFEngine.CGImageBox] = [:]
-    var selectedPages: Set<Int> = []
+    /// The open PDF being edited (PDFKit isn't Sendable: main actor only).
+    @ObservationIgnored private(set) var pdfEditor: PDFEditor?
+    /// Bumped after every edit so views re-read the pages.
+    private(set) var pdfRevision = 0
+    private(set) var pdfEdited = false
+    var pdfMode: PDFMode = .edit
+    /// Selected pages by identity, so selection survives reordering.
+    var selectedPageIDs: Set<ObjectIdentifier> = []
+    var pdfCompression: PDFEditor.Compression = .none
+    private(set) var editedPDFEstimate: (key: String, bytes: Int64?)?
+    var pdfText = ""
+    var pdfTextSize: Double = 18
+    var pdfTextColor: PDFTextColor = .black
+    var pdfTextPosition: PDFEditor.TextPosition = .bottomRight
+    var splitMode: SplitMode = .everyPage
+    var splitEvery = 2
     var rasterDPI: Double = 150
     var rasterFormat: ImageFormat = .png
     var rasterQuality: Double = 0.9
@@ -303,8 +318,12 @@ final class ImageDocument {
         pdfPassword = nil
         pdfPasswordError = nil
         needsPDFPassword = false
-        pageThumbnails = [:]
-        selectedPages = []
+        pdfEditor = nil
+        pdfEdited = false
+        pdfRevision = 0
+        selectedPageIDs = []
+        editedPDFEstimate = nil
+        pdfMode = .edit
         pdfPreviewPages = []
         pdfEstimate = nil
         isLoading = true
@@ -333,23 +352,15 @@ final class ImageDocument {
     // MARK: - PDF → images
 
     private func loadPDF(_ url: URL) async {
-        let password = pdfPassword
         do {
-            let info = try await Task.detached { try PDFEngine.info(url: url, password: password) }.value
+            let editor = try PDFEditor(url: url, password: pdfPassword)
             guard sourceURL == url else { return }
-            pdfInfo = info
+            pdfEditor = editor
+            pdfEdited = false
             needsPDFPassword = false
-            selectedPages = Set(1...info.pageCount)
+            refreshPDFInfo()
+            selectedPageIDs = []
             isLoading = false
-            // Thumbnails about 320 px on the long side, page by page.
-            for page in 1...min(info.pageCount, 500) {
-                let size = info.pageSizes[page - 1]
-                let dpi = 72 * 320 / max(size.width, size.height, 1)
-                guard let image = try? await Task.detached(operation: {
-                    PDFEngine.CGImageBox(try PDFEngine.renderPage(url: url, page: page, dpi: dpi, password: password))
-                }).value, sourceURL == url else { continue }
-                pageThumbnails[page] = image
-            }
         } catch PDFError.locked {
             needsPDFPassword = true
             isLoading = false
@@ -372,31 +383,245 @@ final class ImageDocument {
         Task { await loadPDF(sourceURL) }
     }
 
-    func togglePage(_ page: Int) {
-        if selectedPages.contains(page) { selectedPages.remove(page) } else { selectedPages.insert(page) }
+    // MARK: - PDF editing
+
+    /// Pages in order; reading `pdfRevision` makes views update after edits.
+    var pdfPages: [PDFPage] {
+        _ = pdfRevision
+        guard let pdfEditor else { return [] }
+        return (0..<pdfEditor.pageCount).compactMap { pdfEditor.page($0) }
+    }
+
+    var selectedIndices: [Int] {
+        pdfPages.enumerated().filter { selectedPageIDs.contains(ObjectIdentifier($0.element)) }.map(\.offset)
+    }
+
+    func togglePage(_ page: PDFPage) {
+        let id = ObjectIdentifier(page)
+        if selectedPageIDs.contains(id) { selectedPageIDs.remove(id) } else { selectedPageIDs.insert(id) }
+    }
+
+    func selectAllPages() { selectedPageIDs = Set(pdfPages.map(ObjectIdentifier.init)) }
+    func selectNoPages() { selectedPageIDs = [] }
+
+    private func pdfChanged() {
+        pdfEdited = true
+        pdfRevision += 1
+        refreshPDFInfo()
+        let alive = Set(pdfPages.map(ObjectIdentifier.init))
+        selectedPageIDs = selectedPageIDs.intersection(alive)
+    }
+
+    private func refreshPDFInfo() {
+        guard let pdfEditor, let sourceURL else { return }
+        let size = (try? sourceURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+        pdfInfo = PDFInfo(fileName: sourceURL.lastPathComponent, fileSize: size, pageCount: pdfEditor.pageCount,
+                          pageSizes: pdfEditor.pageSizes, isEncrypted: pdfEditor.document.isEncrypted)
+    }
+
+    func rotateSelectedPages(clockwise: Bool) {
+        pdfEditor?.rotate(selectedIndices, quarterTurns: clockwise ? 1 : -1)
+        pdfChanged()
+    }
+
+    func deleteSelectedPages() {
+        guard let pdfEditor, selectedIndices.count < pdfEditor.pageCount else { return }
+        pdfEditor.delete(selectedIndices)
+        pdfChanged()
+    }
+
+    /// Moves the selection one place earlier (-1) or later (+1).
+    func moveSelectedPages(by offset: Int) {
+        let indices = selectedIndices
+        guard let first = indices.first, let last = indices.last, let pdfEditor else { return }
+        let destination = offset < 0 ? first - 1 : last + 2 - indices.count
+        guard destination >= 0, destination + indices.count <= pdfEditor.pageCount else { return }
+        pdfEditor.movePages(indices, to: destination)
+        pdfChanged()
+    }
+
+    /// Drag and drop: puts the dragged page (or the whole selection, if the
+    /// dragged page is selected) before `target`.
+    func dropPage(_ dragged: Int, before target: Int) {
+        guard let pdfEditor else { return }
+        let draggedPage = pdfEditor.page(dragged).map(ObjectIdentifier.init)
+        let moving = draggedPage.map(selectedPageIDs.contains) == true ? selectedIndices : [dragged]
+        let before = moving.filter { $0 < target }.count
+        pdfEditor.movePages(moving, to: max(target - before, 0))
+        pdfChanged()
+    }
+
+    private var insertionIndex: Int? { selectedIndices.last.map { $0 + 1 } }
+
+    func presentAddPDFPanel() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.allowsMultipleSelection = true
+        panel.message = "Choose PDFs to add after the selected page (or at the end)."
+        guard panel.runModal() == .OK, let pdfEditor else { return }
+        var position = insertionIndex ?? pdfEditor.pageCount
+        for url in panel.urls {
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+            do {
+                position += try pdfEditor.insertPDF(url, at: position)
+            } catch {
+                exportState = .failed(String(describing: error))
+            }
+        }
+        pdfChanged()
+    }
+
+    func presentAddImagePagesPanel() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = true
+        panel.message = "Choose images to add as pages. Any format works."
+        guard panel.runModal() == .OK, let pdfEditor else { return }
+        var position = insertionIndex ?? pdfEditor.pageCount
+        for url in panel.urls {
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+            do {
+                try pdfEditor.insertImage(url, at: position)
+                position += 1
+            } catch {
+                exportState = .failed(String(describing: error))
+            }
+        }
+        pdfChanged()
+    }
+
+    func addTextToSelectedPage() {
+        guard let index = selectedIndices.first, !pdfText.isEmpty else { return }
+        pdfEditor?.addText(pdfText, page: index, position: pdfTextPosition, fontSize: pdfTextSize, color: pdfTextColor.color)
+        pdfText = ""
+        pdfChanged()
+    }
+
+    func revertPDF() {
+        guard let sourceURL else { return }
+        Task { await loadPDF(sourceURL) }
+    }
+
+    /// Measures the edited PDF at the chosen compression.
+    var editedEstimateKey: String { "\(pdfRevision)-\(pdfCompression.rawValue)" }
+
+    func refreshEditedPDFEstimate() async {
+        guard let pdfEditor else { return }
+        let key = editedEstimateKey
+        editedPDFEstimate = (key, nil)
+        try? await Task.sleep(for: .milliseconds(300))
+        guard editedEstimateKey == key, let data = pdfEditor.snapshot() else { return }
+        let compression = pdfCompression
+        guard let bytes = try? await PDFEditor.compress(data, compression).count, editedEstimateKey == key else { return }
+        editedPDFEstimate = (key, Int64(bytes))
+    }
+
+    func presentSaveEditedPDFPanel(selectedOnly: Bool = false) {
+        guard let sourceURL, let pdfEditor, !isExporting else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.isExtensionHidden = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = sourceURL.deletingLastPathComponent()
+        let base = sourceURL.deletingPathExtension().lastPathComponent
+        let suffix = selectedOnly ? " (pages)" : " (edited)"
+        panel.nameFieldStringValue = SafeOutput.defaultDestination(
+            for: sourceURL.deletingLastPathComponent().appendingPathComponent(base + suffix).appendingPathExtension("pdf"),
+            pathExtension: "pdf"
+        ).lastPathComponent
+        let pages = selectedOnly ? selectedIndices.count : pdfEditor.pageCount
+        panel.message = "\(pages) page\(pages == 1 ? "" : "s"). The original PDF is never changed."
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        let data = selectedOnly ? pdfEditor.extract(selectedIndices).dataRepresentation() : pdfEditor.snapshot()
+        guard let data else { return }
+        let compression = pdfCompression
+        exportState = .running(0.3)
+        exportTask = Task {
+            do {
+                let output = try await PDFEditor.compress(data, compression)
+                try PDFEditor.save(output, to: destination, source: sourceURL, overwrite: true)
+                exportState = .saved(destination)
+            } catch {
+                exportState = .failed(String(describing: error))
+            }
+        }
+    }
+
+    func splitToFolder() {
+        guard let sourceURL, let pdfEditor, !isExporting else { return }
+        let parts: [PDFDocument] = switch splitMode {
+        case .everyPage: pdfEditor.split(every: 1)
+        case .everyN: pdfEditor.split(every: splitEvery)
+        case .atSelection: pdfEditor.split(before: selectedIndices)
+        }
+        guard parts.count > 1 else {
+            exportState = .failed("That split makes only one part. Select the pages where new parts should start.")
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Split Here"
+        panel.message = "Choose a folder for \(parts.count) PDFs."
+        panel.directoryURL = sourceURL.deletingLastPathComponent()
+        guard panel.runModal() == .OK, let folder = panel.url else { return }
+        let accessed = folder.startAccessingSecurityScopedResource()
+        defer { if accessed { folder.stopAccessingSecurityScopedResource() } }
+        let base = sourceURL.deletingPathExtension().lastPathComponent
+        var written: [URL] = []
+        do {
+            for (index, part) in parts.enumerated() {
+                let name = "\(base) part \(index + 1)"
+                let destination = SafeOutput.defaultDestination(
+                    for: folder.appendingPathComponent(name).appendingPathExtension("pdf"), pathExtension: "pdf"
+                )
+                try PDFEditor.save(part, to: destination, source: sourceURL)
+                written.append(destination)
+            }
+            exportState = .saved(written[0])
+        } catch {
+            exportState = .failed(String(describing: error))
+        }
+    }
+
+    /// Pages to export as images: the selection, or every page if none.
+    var pagesToExport: [Int] {
+        selectedIndices.isEmpty ? Array(0..<(pdfEditor?.pageCount ?? 0)) : selectedIndices
     }
 
     func exportPagesToFolder() {
-        guard let sourceURL, !selectedPages.isEmpty, !isExporting else { return }
+        guard let sourceURL, let pdfEditor, !pagesToExport.isEmpty, !isExporting else { return }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
         panel.prompt = "Export Here"
-        panel.message = "Choose a folder for \(selectedPages.count) page image\(selectedPages.count == 1 ? "" : "s")."
+        panel.message = "Choose a folder for \(pagesToExport.count) page image\(pagesToExport.count == 1 ? "" : "s")."
         panel.directoryURL = sourceURL.deletingLastPathComponent()
         guard panel.runModal() == .OK, let folder = panel.url else { return }
-        let pages = selectedPages.sorted()
-        let (dpi, format, password) = (rasterDPI, rasterFormat, pdfPassword)
+        let pages = pagesToExport.map { $0 + 1 }
+        let (dpi, format) = (rasterDPI, rasterFormat)
         let quality = format.hasLossyMode ? (format == .webp && rasterQuality >= 0.99 ? nil : rasterQuality) : nil
+        // Export from the document as edited (rotations, order…), written
+        // to a temporary file under the original's name.
+        guard let data = pdfEditor.snapshot() else { return }
+        let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("dex-\(UUID().uuidString)", isDirectory: true)
+        let edited = scratch.appendingPathComponent(sourceURL.lastPathComponent)
         exportState = .running(0)
         exportTask = Task {
             let accessed = folder.startAccessingSecurityScopedResource()
-            defer { if accessed { folder.stopAccessingSecurityScopedResource() } }
+            defer {
+                if accessed { folder.stopAccessingSecurityScopedResource() }
+                try? FileManager.default.removeItem(at: scratch)
+            }
             do {
+                try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+                try data.write(to: edited)
                 let files = try await PDFEngine.exportPages(
-                    url: sourceURL, pages: pages, dpi: dpi, format: format, lossyQuality: quality,
-                    to: folder, password: password
+                    url: edited, pages: pages, dpi: dpi, format: format, lossyQuality: quality, to: folder
                 ) { fraction in
                     Task { @MainActor in
                         guard case .running = self.exportState else { return }
@@ -748,3 +973,27 @@ struct PDFEstimateKey: Equatable {
     let request: ConvertRequest?
 }
 
+
+enum PDFMode: String, CaseIterable, Identifiable {
+    case edit, images
+    var id: Self { self }
+}
+
+enum SplitMode: String, CaseIterable, Identifiable {
+    case everyPage, everyN, atSelection
+    var id: Self { self }
+}
+
+enum PDFTextColor: String, CaseIterable, Identifiable {
+    case black, white, red, ember
+    var id: Self { self }
+
+    var color: NSColor {
+        switch self {
+        case .black: .black
+        case .white: .white
+        case .red: .systemRed
+        case .ember: NSColor(red: 0.96, green: 0.36, blue: 0.15, alpha: 1)
+        }
+    }
+}
