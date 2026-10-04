@@ -185,7 +185,7 @@ private struct ExportToast: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .glassEffect(.regular, in: Capsule())
+        .floatingGlass(in: Capsule(), depth: 0.5)
         .padding(.bottom, 18)
         .opacity(document.exportState == .idle ? 0 : 1)
         .animation(.easeOut(duration: 0.2), value: document.exportState)
@@ -221,7 +221,7 @@ private struct ActionDock: View {
                     .accessibilityHidden(true)
             }
         }
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .floatingGlass(in: RoundedRectangle(cornerRadius: 20, style: .continuous), depth: 0.6)
     }
 }
 
@@ -242,10 +242,7 @@ private struct DockButton: View {
             }
             .frame(width: 66, height: 50)
             .foregroundStyle(isSelected ? Theme.ember : .primary)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isSelected ? Theme.ember.opacity(0.16) : .clear)
-            )
+            .dockTile(isSelected: isSelected)
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -288,6 +285,6 @@ private struct ToolPanel: View {
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Theme.panelCorner, style: .continuous))
+        .floatingGlass(in: RoundedRectangle(cornerRadius: Theme.panelCorner, style: .continuous))
     }
 }

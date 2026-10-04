@@ -97,7 +97,8 @@ struct LinkPage: View {
         }
         .padding(24)
         .frame(width: 560)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .floatingGlass(in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .hoverFloat(3)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

@@ -12,6 +12,7 @@ struct DEXApp: App {
             ContentView(document: document)
                 .frame(minWidth: 900, minHeight: 600)
                 .tint(Theme.ember)
+                .containerBackground(Theme.base, for: .window)
                 .onAppear { appDelegate.attach(document) }
         }
         .windowStyle(.hiddenTitleBar)

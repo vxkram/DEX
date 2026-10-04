@@ -51,7 +51,7 @@ struct LoupePanel: View {
         }
         .padding(20)
         .frame(maxHeight: .infinity, alignment: .top)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Theme.panelCorner, style: .continuous))
+        .floatingGlass(in: RoundedRectangle(cornerRadius: Theme.panelCorner, style: .continuous))
     }
 
     /// The pixel position of the dragged corner or edge, in display space.

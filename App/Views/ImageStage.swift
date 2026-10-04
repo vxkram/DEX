@@ -47,7 +47,8 @@ struct ImageStage: View {
             .offset(x: -CGFloat(crop.x) * scale, y: -CGFloat(crop.y) * scale)
             .frame(width: CGFloat(crop.width) * scale, height: CGFloat(crop.height) * scale, alignment: .topLeading)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .shadow(color: .black.opacity(0.5), radius: 24, y: 10)
+            .shadow(color: .black.opacity(0.28), radius: 4, y: 2)
+            .shadow(color: .black.opacity(0.45), radius: 36, y: 22)
     }
 }
 
@@ -237,7 +238,8 @@ private struct CompositeStage: View {
             }
             .frame(width: CGFloat(layout.canvas.width) * scale, height: CGFloat(layout.canvas.height) * scale, alignment: .topLeading)
             .clipped()
-            .shadow(color: .black.opacity(0.5), radius: 24, y: 10)
+            .shadow(color: .black.opacity(0.28), radius: 4, y: 2)
+            .shadow(color: .black.opacity(0.45), radius: 36, y: 22)
         }
     }
 

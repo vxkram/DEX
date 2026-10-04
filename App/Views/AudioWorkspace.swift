@@ -107,7 +107,7 @@ private struct AudioStage: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Theme.panelCorner, style: .continuous))
+        .floatingGlass(in: RoundedRectangle(cornerRadius: Theme.panelCorner, style: .continuous))
         .overlay(alignment: .bottom) {
             if audio.tool == nil || audio.tool == .info { AudioExportToast(audio: audio).padding(.bottom, 70) }
         }
@@ -594,8 +594,7 @@ private struct AudioDock: View {
                     }
                     .frame(width: 66, height: 50)
                     .foregroundStyle(selection == tool ? Theme.ember : .primary)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(selection == tool ? Theme.ember.opacity(0.16) : .clear))
+                    .dockTile(isSelected: selection == tool)
                     .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(.plain)
@@ -612,7 +611,7 @@ private struct AudioDock: View {
                     .accessibilityHidden(true)
             }
         }
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .floatingGlass(in: RoundedRectangle(cornerRadius: 20, style: .continuous), depth: 0.6)
     }
 }
 
@@ -643,7 +642,7 @@ private struct AudioToolPanel: View {
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: Theme.panelCorner, style: .continuous))
+        .floatingGlass(in: RoundedRectangle(cornerRadius: Theme.panelCorner, style: .continuous))
     }
 }
 
@@ -676,7 +675,7 @@ private struct AudioExportToast: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .glassEffect(.regular, in: Capsule())
+        .floatingGlass(in: Capsule(), depth: 0.5)
         .opacity(audio.exportState == .idle ? 0 : 1)
         .animation(.easeOut(duration: 0.2), value: audio.exportState)
     }

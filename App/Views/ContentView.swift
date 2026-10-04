@@ -4,10 +4,11 @@ import SwiftUI
 struct ContentView: View {
     @Bindable var document: ImageDocument
     @State private var isDropTargeted = false
+    @State private var pointer = Pointer()
 
     var body: some View {
         ZStack {
-            Backdrop()
+            Backdrop(pointer: pointer)
 
             if document.linkDownload.isPageVisible {
                 LinkPage(download: document.linkDownload) { await document.open($0) }
@@ -36,6 +37,8 @@ struct ContentView: View {
                 }
             }
         }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { pointer.size = $0 }
+        .onContinuousHover { pointer.update($0) }
         .dropDestination(for: URL.self) { urls, _ in
             guard let url = urls.first else { return false }
             // In Compose, dropped images join the composition instead of

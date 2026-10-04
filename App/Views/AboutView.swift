@@ -4,6 +4,8 @@ import SwiftUI
 /// DEX ▸ About DEX: identity, version and the credits the bundled
 /// open-source code requires.
 struct AboutView: View {
+    @State private var pointer = Pointer()
+
     private var version: String {
         let info = Bundle.main.infoDictionary
         let short = info?["CFBundleShortVersionString"] as? String ?? "?"
@@ -13,7 +15,7 @@ struct AboutView: View {
 
     var body: some View {
         ZStack {
-            Backdrop()
+            Backdrop(pointer: pointer)
             ScrollView {
                 VStack(spacing: 22) {
                     VStack(spacing: 10) {

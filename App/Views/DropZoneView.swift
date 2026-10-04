@@ -47,14 +47,15 @@ struct DropZoneView: View {
         .padding(.horizontal, 56)
         .padding(.vertical, 44)
         .frame(width: 440)
-        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .floatingGlass(in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .strokeBorder(
-                    isTargeted ? Theme.ember : .white.opacity(0.08),
+                    isTargeted ? Theme.ember : .clear,
                     style: StrokeStyle(lineWidth: isTargeted ? 2 : 1, dash: isTargeted ? [7, 5] : [])
                 )
         }
+        .hoverFloat(6)
         .scaleEffect(isTargeted ? 1.02 : 1)
         .animation(.spring(duration: 0.25), value: isTargeted)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
