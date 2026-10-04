@@ -296,7 +296,7 @@ struct MP3Stream {
 
         let lame = base + 120
         var tag = lameTag.map { Data($0) } ?? Data(count: 34)
-        if lameTag == nil { tag.replaceSubrange(0..<9, with: Data("DEX  ".utf8)) }
+        if lameTag == nil { tag.replaceSubrange(0..<9, with: Data("DEX      ".utf8)) }
         // ReplayGain described the whole track, not this part of it.
         tag.replaceSubrange(11..<19, with: Data(count: 8))
         tag[21] = UInt8(delay >> 4)

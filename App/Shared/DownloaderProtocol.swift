@@ -26,7 +26,7 @@ import Foundation
 }
 
 enum DownloaderService {
-    static let name = "com.dex.app.Downloader"
+    static let name = "com.vxkram.dex.Downloader"
 
     /// Where downloads land before the app saves them in the chosen format:
     /// inside ~/Downloads (which the sandboxed app may read), hidden.

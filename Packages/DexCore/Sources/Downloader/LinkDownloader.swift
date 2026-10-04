@@ -426,7 +426,7 @@ public struct LinkDownloader: Sendable {
     /// "DEX  42.3%" → 0.423
     static func progress(in line: String) -> Double? {
         guard line.hasPrefix("DEX ") else { return nil }
-        let number = line.dropFirst(8).trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "%", with: "")
+        let number = line.dropFirst("DEX ".count).trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "%", with: "")
         return Double(number).map { min(max($0 / 100, 0), 1) }
     }
 

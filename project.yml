@@ -2,7 +2,7 @@
 # adding or removing app source files. The .xcodeproj itself is not committed.
 name: DEX
 options:
-  bundleIdPrefix: com.dex
+  bundleIdPrefix: com.vxkram
   deploymentTarget:
     macOS: "26.0"
   createIntermediateGroups: true
@@ -107,7 +107,7 @@ targets:
         com.apple.security.files.downloads.read-write: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.dex.app
+        PRODUCT_BUNDLE_IDENTIFIER: com.vxkram.dex
         PRODUCT_NAME: DEX
         # Ad-hoc "Sign to Run Locally" until a Developer ID exists.
         CODE_SIGN_IDENTITY: "-"
@@ -151,7 +151,7 @@ targets:
           ServiceType: Application
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.dex.app.Downloader
+        PRODUCT_BUNDLE_IDENTIFIER: com.vxkram.dex.Downloader
         PRODUCT_NAME: DEXDownloader
         CODE_SIGN_IDENTITY: "-"
         CODE_SIGN_STYLE: Manual

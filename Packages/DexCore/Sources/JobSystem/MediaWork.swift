@@ -26,7 +26,7 @@ public final class CancellationToken: Sendable {
 /// with 12 parallel encodes). A dedicated dispatch queue avoids that.
 public enum MediaWork {
     private static let queue = DispatchQueue(
-        label: "com.dex.media-work", qos: .userInitiated, attributes: .concurrent
+        label: "com.vxkram.dex.media-work", qos: .userInitiated, attributes: .concurrent
     )
 
     public static func run<T: Sendable>(

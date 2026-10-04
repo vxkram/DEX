@@ -140,7 +140,7 @@ private final class Pump: @unchecked Sendable {
     func cancel() { lock.withLock { cancelled = true } }
 
     func run(label: String) async throws {
-        let queue = DispatchQueue(label: "com.dex.convert.\(label)")
+        let queue = DispatchQueue(label: "com.vxkram.dex.convert.\(label)")
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             input.requestMediaDataWhenReady(on: queue) { [self] in
                 while input.isReadyForMoreMediaData {
