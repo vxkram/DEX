@@ -12,20 +12,7 @@ final class DownloaderHandler: NSObject, DownloaderServiceProtocol, @unchecked S
         self.connection = connection
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let tools = support.appendingPathComponent("DEX/Tools", isDirectory: true)
-        Self.moveToolsFromOldName(support: support, to: tools)
         downloader = LinkDownloader(toolFolder: tools)
-    }
-
-    /// The app was called DEX before; keep the yt-dlp it already
-    /// fetched instead of downloading ~35 MB again.
-    private static func moveToolsFromOldName(support: URL, to tools: URL) {
-        let fm = FileManager.default
-        let old = support.appendingPathComponent("DEX", isDirectory: true)
-        let oldTools = old.appendingPathComponent("Tools", isDirectory: true)
-        guard fm.fileExists(atPath: oldTools.path), !fm.fileExists(atPath: tools.path) else { return }
-        try? fm.createDirectory(at: tools.deletingLastPathComponent(), withIntermediateDirectories: true)
-        guard (try? fm.moveItem(at: oldTools, to: tools)) != nil else { return }
-        if (try? fm.contentsOfDirectory(atPath: old.path))?.isEmpty == true { try? fm.removeItem(at: old) }
     }
 
     func isToolInstalled(reply: @escaping @Sendable (Bool) -> Void) {

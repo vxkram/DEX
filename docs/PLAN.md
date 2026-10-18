@@ -1,7 +1,7 @@
 # DEX — Product & Architecture Plan (v1: Images)
 
 ## Context
-`/Users/vikram/DEX` contains only `my_idea.md`: a brief for a macOS-first "media Swiss Army knife" (drop file → choose action → adjust → preview → export) with a strict quality-preservation philosophy. No code exists yet. This plan answers the 15 deliverables in the brief, using the answers from our Q&A and verified research.
+The starting point is a brief for a macOS-first "media Swiss Army knife" (drop file → choose action → adjust → preview → export) with a strict quality-preservation philosophy. No code exists yet. This plan answers the 15 deliverables in the brief, using the answers from our Q&A and verified research.
 
 **Decisions already made with you**
 - Personal tool first; distribution undecided → plan conservatively (sandbox-ready, no GPL, no patent-encumbered encoders of our own).
@@ -334,7 +334,7 @@ Each phase ends with the app or CLI usable, tests green, and an ADR for any deci
 **Phase 0 plus the start of Phase 1: `dex inspect`.**
 1. Install Xcode (App Store) and run `sudo xcode-select -s /Applications/Xcode.app`.
    - `git init`, add `.gitignore` (Xcode/SwiftPM), `README.md` and `docs/adr/0001-stack.md`.
-   - Keep `my_idea.md` and this plan in `docs/`.
+   - Keep this plan in `docs/`.
    - Create a **private** GitHub repo with `gh repo create DEX --private --source . --push`.
 2. Create `Packages/DexCore` with targets `MediaModel`, `ImageEngine` and `dex-cli`, plus a test target.
 3. Implement `MediaInfo` and `ImageEngine.inspect(url:) async throws -> MediaInfo` (UTType, pixel dimensions after orientation, bit depth, colour model and profile name, alpha, HDR gain map present, frame count, has GPS) using `CGImageSource` only.

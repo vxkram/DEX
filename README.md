@@ -6,8 +6,6 @@
 
 <p align="center"><img src="design/screenshot.jpg" width="800" alt="DEX with an image open and the Convert panel showing a lossless result"></p>
 
-> DEX used to be called **DEX**. Same app, new name. Coming from DEX? See [Moving from DEX](#moving-from-dex).
-
 ## What it does
 
 | Tool | What you can do |
@@ -64,12 +62,6 @@ You can also right-click images in Finder: **Services → DEX ▸ Convert to JPE
 ## Ideas & feedback
 Have an idea, found a bug, or want a format DEX doesn't handle yet? Post it in **[Discussions](https://github.com/vxkram/DEX/discussions)**: ideas go under *Ideas*, questions under *Q&A*. Upvote the ideas you want most; that decides what comes next.
 
-## Moving from DEX
-- DEX is a new app to macOS, so you can delete **DEX.app** from Applications.
-- The first time you open DEX, allow it once in **System Settings → Privacy & Security** (see Install).
-- Finder's right-click menu now says **Services → DEX ▸ …**. If you see both for a while, log out and back in.
-- Download from Link keeps the downloader it already fetched, so there's nothing to download again.
-
 ## Privacy
 Everything happens on your Mac, and DEX never uploads anything. The app itself has no network access. The one exception is **Download from Link**: a small helper inside the app fetches the downloader (yt-dlp, from its official GitHub release, checksum-verified) the first time you use it, and then fetches the audio or video you asked for. Nothing else goes online. Location data is removed from exported photos unless you choose **Metadata → Keep**.
 
@@ -77,4 +69,4 @@ Everything happens on your Mac, and DEX never uploads anything. The app itself h
 Built with libjpeg-turbo, libwebp, LAME (MP3, LGPL, shipped as its own replaceable library) and Apple's frameworks. Details and licences are in **DEX ▸ About DEX**. For developers, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Licence
-© 2026 vxkram. All rights reserved. The source is shared here so you can read it, build it for yourself and suggest changes. An open-source licence may come later. The bundled third-party libraries keep their own licences ([docs/NOTICES.md](docs/NOTICES.md)).
+DEX is released under the [MIT Licence](LICENSE). The bundled third-party libraries keep their own licences ([docs/NOTICES.md](docs/NOTICES.md)).
