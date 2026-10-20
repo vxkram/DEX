@@ -1,11 +1,13 @@
 # Developing DEX
 
-## Requirements
+The repo holds two apps: the Mac app in `mac/` (below) and the Windows app in `windows/` (see [windows/README.md](../windows/README.md) and [ADR 0007](adr/0007-windows.md)).
+
+## Mac: requirements
 - macOS 26+ on Apple Silicon
 - Xcode 26+ (`sudo xcode-select -s /Applications/Xcode.app`)
 - XcodeGen: `brew install xcodegen` (generates `DEX.xcodeproj` from `project.yml`)
 
-## Layout
+## Mac: layout (under `mac/`)
 ```
 App/                      SwiftUI app (UI only)
 Packages/DexCore/     SwiftPM package: engine + CLI + tests (no UI)
@@ -19,11 +21,11 @@ Packages/DexCore/     SwiftPM package: engine + CLI + tests (no UI)
   Sources/dex-cli/    `dex` command-line tool
 Packages/Lame/            LAME MP3 encoder (LGPL) as its own dynamic library (scripts/vendor-lame.sh)
 DownloaderService/        XPC service that runs yt-dlp for Download from Link (not sandboxed; ADR 0006)
-docs/                     Plan, original brief, architecture decisions (adr/)
-design/                   App icon master (1024 px)
 ```
 
-## Common tasks
+At the repo root: `docs/` (plan, brief, architecture decisions in `adr/`) and `design/` (app icon master, 1024 px, shared by both apps).
+
+## Mac: common tasks (run in `mac/`)
 ```sh
 make test                                   # run all tests
 make run                                    # build and launch the app (debug)
