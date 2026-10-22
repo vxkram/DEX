@@ -245,15 +245,33 @@ export default defineBackground(() => {
     }
   }
 
+  /** A frame from the YouTube player bar: straight to Downloads, or into the editor. */
+  async function saveOrEditFrame(dataUrl: string, name: string, action: 'save' | 'edit', tab?: Browser.tabs.Tab) {
+    const blob = await (await fetch(dataUrl)).blob();
+    if (action === 'edit') return openInEditor(blob, name, tab);
+    // Firefox won't download data: URLs; Chrome's service worker can't make blob: ones.
+    const url = import.meta.env.FIREFOX ? URL.createObjectURL(blob) : dataUrl;
+    const id = await browser.downloads.download({ url, filename: name, conflictAction: 'uniquify' });
+    if (import.meta.env.FIREFOX) ours.set(id, { blobUrl: url });
+    notify(`Saved ${name} to Downloads`);
+  }
+
   browser.commands.onCommand.addListener(async (command) => {
     if (command !== 'screenshot-area') return;
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     if (tab) startArea(tab);
   });
 
-  browser.runtime.onMessage.addListener((message: { target?: string; type: string; mode?: 'area' | 'page'; rect?: Area | null; viewport?: { width: number; height: number } }, sender) => {
+  browser.runtime.onMessage.addListener((message: {
+    target?: string; type: string; mode?: 'area' | 'page'; rect?: Area | null; viewport?: { width: number; height: number };
+    action?: 'save' | 'edit'; dataUrl?: string; name?: string;
+  }, sender) => {
     if (message.target !== 'background') return;
-    if (message.type === 'area-selected' && sender.tab) {
+    if (message.type === 'frame' && message.dataUrl && message.name) {
+      saveOrEditFrame(message.dataUrl, message.name, message.action ?? 'save', sender.tab);
+    } else if (message.type === 'frame-failed') {
+      notify('This video is protected, so DEX can’t copy the frame. Use “Select Area” instead.');
+    } else if (message.type === 'area-selected' && sender.tab) {
       captureTab(sender.tab, message.rect ?? null, message.viewport!);
     } else if (message.type === 'screenshot') {
       // From the popup, which closes as soon as it asks.

@@ -25,6 +25,12 @@ DEX Mini brings the [DEX](https://github.com/vxkram/DEX) image tools to Firefox,
 - Rotate, flip, and resize (75%, 50%, 25%, 4K, Web, Social)
 - Convert to PNG, JPEG or WebP, and rename the file before saving
 
+**Screenshots**
+
+- Drag a box over any part of a page (Alt+Shift+S), or capture the whole visible page
+- Pause a YouTube video and save the frame as a PNG at the video's full resolution
+- Every shot opens in the editor, ready to crop, fit or convert
+
 **Animated GIFs**
 
 - A timeline with play/pause and trim handles
@@ -83,6 +89,7 @@ Permissions:
 - `scripting` + `activeTab`: reading a `blob:` image from the tab the user right-clicked.
 - `notifications`: saying when a download was converted or kept.
 - `storage`: the user's auto-convert settings.
+- Content script on `www.youtube.com` only: when a video is paused, it shows a small bar to save that frame as a PNG or open it in the editor. It reads nothing else from the page.
 
 The innerHTML warning is in bundled Preact (its `dangerouslySetInnerHTML` support); the add-on never uses that prop.
 

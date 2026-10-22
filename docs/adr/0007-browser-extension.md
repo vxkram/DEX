@@ -28,7 +28,8 @@ The extension can't do what ImageIO and libjpeg-turbo do on the Mac. Every pixel
 ## Screenshots
 - **Select area** (popup, right-click, or Alt+Shift+S) injects a small overlay into the page: it dims the page, you drag a box, then the overlay removes itself, the page repaints, and `tabs.captureVisibleTab` captures it. The crop is converted from CSS pixels to the capture's own pixel size, not `devicePixelRatio`, which page zoom changes. **Visible page** skips the overlay.
 - **Save video frame** (right-click a video) draws the `<video>` into a canvas inside the page, at the video's own resolution, not the screen's. A cross-origin or DRM-protected video can't be read that way, and DEX says so and suggests Select area instead.
-- No new permissions: `activeTab` is granted by the click or the shortcut, and `scripting` injects the overlay. Browser pages and add-on stores can't be captured, and DEX says so.
+- **On YouTube**, pausing a video shows a small DEX bar on the player: **Save frame** downloads the frame as PNG at the video's resolution, and **Edit** opens it in the editor. That's a content script on `www.youtube.com` only, the one site-specific permission the add-on asks for at install. YouTube's own right-click menu hides the browser's, so the bar is the easy way there.
+- Area and page shots need no extra permission: `activeTab` is granted by the click or the shortcut, and `scripting` injects the overlay. Browser pages and add-on stores can't be captured, and DEX says so.
 - Shots open in the editor as PNG, named like macOS screenshots.
 
 ## Downloads
