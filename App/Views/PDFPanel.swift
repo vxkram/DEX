@@ -43,7 +43,7 @@ struct PDFToImages: View {
                     Button("None") { document.selectNoPages() }
                         .buttonStyle(.link).tint(Theme.ember)
                 }
-                Explanation("With nothing selected, every page is exported. Click pages to pick some.")
+                Explanation("Nothing selected exports every page.")
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -61,7 +61,6 @@ struct PDFToImages: View {
                         .font(.technicalSmall)
                         .foregroundStyle(.secondary)
                 }
-                Explanation("Dots per inch: higher means sharper text and larger files. 150 suits screens, 300 suits printing.")
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -80,7 +79,6 @@ struct PDFToImages: View {
                         document.rasterQuality = $0
                     }
                 } else {
-                    Explanation("\(document.rasterFormat.displayName) is lossless: text and lines stay perfectly crisp.")
                 }
             }
         }
@@ -122,7 +120,6 @@ private struct ImagesToPDF: View {
                     .frame(maxWidth: .infinity, minHeight: 32)
             }
             .buttonStyle(.glass)
-            Explanation("One image per page, any format. Location data is removed.")
         }
 
         PDFQualitySection(document: document)
@@ -181,7 +178,6 @@ struct PDFPageSizeSection: View {
                                   display: "\(Int((document.pdfMargin / 72 * 25.4).rounded())) mm") {
                         document.pdfMargin = $0.rounded()
                     }
-                    Explanation("Pages turn landscape automatically for wide images.")
                 }
             }
         }

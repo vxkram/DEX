@@ -1,7 +1,8 @@
 import MediaModel
 import SwiftUI
 
-/// The live quality verdict for the current settings, shown by every tool.
+/// The live quality verdict for the current settings, shown by every tool:
+/// the verdict and size at a glance, the reasons one click away.
 struct ResultSection: View {
     let document: ImageDocument
 
@@ -11,11 +12,6 @@ struct ResultSection: View {
                 PanelSectionHeader("Result")
                 switch result {
                 case .success(let plan):
-                    let size = plan.outputDisplaySize
-                    Text(verbatim: "Saves as \(plan.request.target.displayName) · \(size.width) × \(size.height)")
-                        .font(.technical)
-                        .help("Change the format in Convert (⌘1).")
-                    EstimateLine(document: document)
                     PlanSummary(plan: plan, document: document)
                 case .failure(let error):
                     Label(String(describing: error), systemImage: "xmark.octagon")
@@ -53,25 +49,34 @@ struct ToolPanelBody<Content: View>: View {
 struct PlanSummary: View {
     let plan: ConversionPlan
     let document: ImageDocument
+    @State private var showsDetails = false
 
     var body: some View {
-        VerdictBadge(verdict: plan.verdict)
+        HStack(spacing: 10) {
+            VerdictBadge(verdict: plan.verdict)
+            Spacer(minLength: 0)
+        }
+        EstimateLine(document: document)
 
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(plan.notes.enumerated()), id: \.offset) { _, note in
-                Label {
-                    Text(note.description)
-                        .font(.callout)
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: note.isLoss ? "minus.circle.fill" : "info.circle")
-                        .foregroundStyle(note.isLoss ? .orange : .secondary)
+        if !plan.notes.isEmpty {
+            DisclosureGroup(isExpanded: $showsDetails) {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(plan.notes.enumerated()), id: \.offset) { _, note in
+                        Label {
+                            Text(note.description)
+                                .font(.callout)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: note.isLoss ? "minus.circle.fill" : "info.circle")
+                                .foregroundStyle(note.isLoss ? .orange : .secondary)
+                        }
+                    }
                 }
-            }
-            if plan.notes.isEmpty && plan.verdict == .noReencode {
-                Text("The image data is copied exactly as it is.")
+                .padding(.top, 6)
+            } label: {
+                let losses = plan.notes.filter(\.isLoss).count
+                Text(losses > 0 ? "What changes (\(losses) loss\(losses == 1 ? "" : "es"))" : "What changes")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
             }
         }
 

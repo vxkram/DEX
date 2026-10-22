@@ -95,13 +95,9 @@ private struct PDFExportSettings: View {
 
     var body: some View {
         let pages = document.pdfImages.count + 1
-        VStack(alignment: .leading, spacing: 6) {
-            Label(pages == 1 ? "1 page" : "\(pages) pages", systemImage: "doc.richtext")
-                .font(.technical)
-            Explanation(pages == 1
-                        ? "The picture as you see it, with your crop, Fit and Compose. Add more pages in the PDF tool (⌘4)."
-                        : "This picture first, then the pages added in the PDF tool (⌘4).")
-        }
+        Label(pages == 1 ? "1 page" : "\(pages) pages", systemImage: "doc.richtext")
+            .font(.technical)
+            .help("The picture as you see it, then any pages added in the PDF tool (⌘4).")
         PDFPageSizeSection(document: document)
         PDFQualitySection(document: document)
     }
@@ -120,12 +116,10 @@ private struct AdvancedSettings: View {
                 QualityControl(quality: $document.quality, target: document.target)
             }
             if document.info?.format == document.target && document.target.canOptimizeLosslessly {
-                VStack(alignment: .leading, spacing: 4) {
-                    Toggle("Smaller without loss", isOn: $document.optimize)
-                        .toggleStyle(.switch)
-                        .tint(Theme.ember)
-                    Explanation("Repacks the \(document.target.displayName) data more tightly. Every pixel stays identical.")
-                }
+                Toggle("Smaller without loss", isOn: $document.optimize)
+                    .toggleStyle(.switch)
+                    .tint(Theme.ember)
+                    .help("Repacks the \(document.target.displayName) data more tightly. Every pixel stays identical.")
             }
             DimensionsSection(document: document)
         }
@@ -191,9 +185,9 @@ private struct DimensionsSection: View {
                 ))
                 .toggleStyle(.switch)
                 .tint(Theme.ember)
+                .help("Fewer pixels make a much smaller file. Proportions stay the same; never larger than the original.")
 
                 if isOn || document.geometry.resize != nil {
-                    Explanation("Fewer pixels make a much smaller file. The proportions stay the same, and it never gets bigger than the original.")
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
                         ForEach(options(for: base), id: \.choice) { option in
                             let size = size(for: option.choice, base: base)

@@ -89,7 +89,7 @@ private struct CanvasButton: View {
                     .frame(width: 40)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Canvas").font(.title3.weight(.semibold))
-                    Text("A page to design on: A4, Story, any size")
+                    Text("A4, Story or any size")
                         .font(.caption)
                         .foregroundStyle(isSelected ? .white.opacity(0.85) : .secondary)
                 }
@@ -185,9 +185,9 @@ private struct ImageList: View {
                     DismissButton { document.composeWarning = nil }
                 }
             }
-            Explanation(document.composedImages.isEmpty
-                        ? "Add one or more images, or drop them onto the window. JPEG, PNG, HEIC, WebP, AVIF… any mix works."
-                        : "Formats don't matter: everything is decoded and colour-matched, then saved in the format you pick in Convert.")
+            if document.composedImages.isEmpty {
+                Explanation("Or drop images onto the window. Any format.")
+            }
         }
     }
 
@@ -250,54 +250,60 @@ private struct LayerControls: View {
     let native: PixelSize
     let canvas: PixelSize
     let update: @MainActor ((inout LayerPlacement) -> Void) -> Void
+    @State private var showsMore = false
 
     var body: some View {
         let height = placement.width * Double(native.height) / Double(max(native.width, 1))
         VStack(alignment: .leading, spacing: 14) {
-            PanelSectionHeader(title)
-            Explanation("Drag it on the picture to move it; it snaps to the centre. Drag its corner to resize.")
+            HStack {
+                PanelSectionHeader(title)
+                    .help("Drag it on the picture to move it; it snaps to the centre. Drag its corner to resize.")
+                Button("Centre", systemImage: "align.horizontal.center") {
+                    update { $0.centerX = (Double(canvas.width) / 2).rounded(); $0.centerY = (Double(canvas.height) / 2).rounded() }
+                }
+                .buttonStyle(.glass)
+                .controlSize(.small)
+                .help("Put it in the middle")
+            }
 
             LabeledSlider(title: "Size", value: placement.width, range: 16...Double(max(canvas.width, native.width)) * 1.5,
                           display: "\(Int(placement.width.rounded())) × \(Int(height.rounded()))") { width in
                 update { $0.width = width.rounded() }
             }
-            Button("Original size (\(native.width) px wide)") {
-                update { $0.width = Double(native.width) }
-            }
-            .buttonStyle(.link)
-            .tint(Theme.ember)
-            .font(.caption)
-
-            LabeledSlider(title: "Opacity", value: placement.opacity, range: 0...1,
-                          display: "\(Int((placement.opacity * 100).rounded()))%") { opacity in
-                update { $0.opacity = opacity }
-            }
-            LabeledSlider(title: "Rotation", value: placement.rotation, range: -180...180,
-                          display: "\(Int(placement.rotation.rounded()))°") { rotation in
-                // Snap to right angles when close.
-                let snapped = (rotation / 90).rounded() * 90
-                update { $0.rotation = abs(snapped - rotation) < 3 ? snapped : rotation.rounded() }
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Position").font(.callout)
-                    Spacer()
-                    Button("Centre", systemImage: "align.horizontal.center") {
-                        update { $0.centerX = (Double(canvas.width) / 2).rounded(); $0.centerY = (Double(canvas.height) / 2).rounded() }
+            DisclosureGroup("More", isExpanded: $showsMore) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Button("Original size (\(native.width) px wide)") {
+                        update { $0.width = Double(native.width) }
                     }
-                    .buttonStyle(.glass)
-                    .controlSize(.small)
-                    .help("Put it in the middle of the page")
+                    .buttonStyle(.link)
+                    .tint(Theme.ember)
+                    .font(.caption)
+
+                    LabeledSlider(title: "Opacity", value: placement.opacity, range: 0...1,
+                                  display: "\(Int((placement.opacity * 100).rounded()))%") { opacity in
+                        update { $0.opacity = opacity }
+                    }
+                    LabeledSlider(title: "Rotation", value: placement.rotation, range: -180...180,
+                                  display: "\(Int(placement.rotation.rounded()))°") { rotation in
+                        // Snap to right angles when close.
+                        let snapped = (rotation / 90).rounded() * 90
+                        update { $0.rotation = abs(snapped - rotation) < 3 ? snapped : rotation.rounded() }
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Position").font(.callout)
+                        AnchorGrid { column, row in
+                            let margin = Double(min(canvas.width, canvas.height)) * 0.04
+                            let halfW = placement.width / 2, halfH = height / 2
+                            let xs = [margin + halfW, Double(canvas.width) / 2, Double(canvas.width) - margin - halfW]
+                            let ys = [margin + halfH, Double(canvas.height) / 2, Double(canvas.height) - margin - halfH]
+                            update { $0.centerX = xs[column].rounded(); $0.centerY = ys[row].rounded() }
+                        }
+                    }
                 }
-                AnchorGrid { column, row in
-                    let margin = Double(min(canvas.width, canvas.height)) * 0.04
-                    let halfW = placement.width / 2, halfH = height / 2
-                    let xs = [margin + halfW, Double(canvas.width) / 2, Double(canvas.width) - margin - halfW]
-                    let ys = [margin + halfH, Double(canvas.height) / 2, Double(canvas.height) - margin - halfH]
-                    update { $0.centerX = xs[column].rounded(); $0.centerY = ys[row].rounded() }
-                }
+                .padding(.top, 8)
             }
+            .font(.callout)
         }
     }
 }
@@ -369,9 +375,7 @@ private struct ArrangementControls: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                Explanation(document.sizing == .matchSmallest
-                            ? "Larger images are scaled down so they line up with the smallest. Nothing is enlarged."
-                            : "Every image keeps its own pixels; smaller ones sit in the space according to alignment.")
+                .help("Match sizes scales larger images down to line up with the smallest. Original sizes keeps every image's own pixels.")
             }
 
             if document.sizing == .original || document.composeMode == .grid {
@@ -399,7 +403,7 @@ private struct BackgroundPicker: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Background").font(.callout)
+            Text("Background").font(.callout).help(explanation)
             HStack(spacing: 6) {
                 Chip(title: "White", isSelected: document.background == .white) { document.background = .white }
                 Chip(title: "Black", isSelected: document.background == .black) { document.background = .black }
@@ -407,7 +411,6 @@ private struct BackgroundPicker: View {
                 ColorPicker("Custom", selection: customColor, supportsOpacity: false)
                     .labelsHidden()
             }
-            Explanation(explanation)
         }
     }
 
@@ -451,11 +454,14 @@ private struct CanvasSizeSection: View {
                     }
                 }
             }
-            HStack(spacing: 10) {
-                NumberField(label: "W", value: size.width) { document.setCanvasSize(PixelSize(width: $0, height: size.height)) }
-                NumberField(label: "H", value: size.height) { document.setCanvasSize(PixelSize(width: size.width, height: $0)) }
+            DisclosureGroup("Custom size") {
+                HStack(spacing: 10) {
+                    NumberField(label: "W", value: size.width) { document.setCanvasSize(PixelSize(width: $0, height: size.height)) }
+                    NumberField(label: "H", value: size.height) { document.setCanvasSize(PixelSize(width: size.width, height: $0)) }
+                }
+                .padding(.top, 8)
             }
-            Explanation("Drag the images on the page to place them. A4 and Letter are 300 dpi, and save as true paper size when you choose PDF in Convert.")
+            .font(.callout)
         }
     }
 }

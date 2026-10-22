@@ -43,7 +43,7 @@ struct TrimPanel: View {
                     Text(verbatim: TimeText.string(audio.kept.length, rate: audio.sampleRate)).font(.technical)
                 }
                 .font(.callout)
-                Explanation("Drag the orange handles on the waveform, or type exact times. I and O set the start and end at the playhead.")
+                Explanation("I and O set start and end at the playhead.")
             }
 
             if audio.edit.trim != nil {
@@ -72,9 +72,6 @@ struct AudioConvertPanel: View {
                         }
                     }
                 }
-                Explanation(audio.target.isLossless
-                            ? "\(audio.target.displayName) keeps every sample. \(audio.target.summary)."
-                            : "\(audio.target.displayName) is lossy: smaller files that throw away detail you may not hear.")
             }
 
             if !audio.target.isLossless {
@@ -86,9 +83,9 @@ struct AudioConvertPanel: View {
                     }
                     .pickerStyle(.segmented)
                     .labelsHidden()
-                    Explanation(audio.info?.format == audio.target
-                                ? "Best keeps the original \(audio.target.displayName) data untouched where it can. A number re-encodes at that rate (kbit/s)."
-                                : "Best is \(AudioRequest.maximumBitRate) kbit/s, the highest \(audio.target.displayName) offers.")
+                    .help(audio.info?.format == audio.target
+                          ? "Best keeps the original \(audio.target.displayName) data untouched where it can. A number re-encodes at that rate (kbit/s)."
+                          : "Best is \(AudioRequest.maximumBitRate) kbit/s, the highest \(audio.target.displayName) offers.")
                 }
             }
         }

@@ -40,9 +40,7 @@ struct CropPanel: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .controlSize(.large)
-                    Explanation(document.isFitting
-                                ? "Keeps the whole picture and adds space around it to make the shape. The photo's own pixels aren't touched."
-                                : "Cuts the picture to the shape. Drag the box to choose what stays.")
+                    .help("Crop cuts the picture to the shape. Fit keeps all of it and adds space around it; the photo's own pixels aren't touched.")
                 }
             }
 
@@ -88,9 +86,6 @@ private struct CropSubjectBanner: View {
             }
             .font(.callout.weight(.semibold))
             .foregroundStyle(Theme.ember)
-            Text("The image selected in Compose. Its place on the page stays the same.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
             if let info = document.info {
                 Button("Crop \(info.fileName) instead") { document.selectBase() }
                     .buttonStyle(.link)
@@ -122,7 +117,7 @@ private struct FitBackgroundPicker: View {
                     .help("Custom colour")
             }
             if current == .transparent && !document.target.supportsAlpha {
-                Explanation("\(document.target.displayName) can't be transparent, so the space will be white. PNG, WebP, HEIC and TIFF keep it.")
+                Explanation("\(document.target.displayName) can't be transparent: saves as white.")
             }
         }
     }

@@ -50,7 +50,7 @@ private struct PDFEditSections: View {
             Button("Extract selected pages to a new PDF…") { document.presentSaveEditedPDFPanel(selectedOnly: true) }
                 .buttonStyle(.link).tint(Theme.ember).font(.caption.weight(.semibold))
                 .disabled(selected.isEmpty)
-            Explanation("Click pages to select them; drag a page to move it (or the whole selection).")
+            Explanation("Click to select, drag to move.")
         }
 
         VStack(alignment: .leading, spacing: 8) {
@@ -89,7 +89,6 @@ private struct PDFEditSections: View {
             Button("Add to page \((selected.first ?? 0) + 1)") { document.addTextToSelectedPage() }
                 .buttonStyle(.glass)
                 .disabled(selected.isEmpty || document.pdfText.isEmpty)
-            Explanation("Added as a text box that stays selectable in other PDF apps.")
         }
 
         VStack(alignment: .leading, spacing: 8) {
@@ -106,9 +105,9 @@ private struct PDFEditSections: View {
                     Text(verbatim: "Every \(document.splitEvery) pages").font(.callout)
                 }
             }
-            Explanation(document.splitMode == .atSelection
-                        ? "A new PDF starts at each selected page."
-                        : "Saves the parts as separate PDFs in a folder you choose.")
+            if document.splitMode == .atSelection {
+                Explanation("A new PDF starts at each selected page.")
+            }
             Button("Split into PDFs…") { document.splitToFolder() }
                 .buttonStyle(.glass)
         }
