@@ -24,6 +24,12 @@ export default defineConfig({
     // so installing asks for little.
     optional_host_permissions: ['<all_urls>'],
     action: { default_title: 'DEX' },
+    commands: {
+      'screenshot-area': {
+        suggested_key: { default: 'Alt+Shift+S' },
+        description: 'Screenshot an area of the page',
+      },
+    },
     ...(browser === 'firefox' && {
       browser_specific_settings: {
         gecko: {

@@ -14,6 +14,12 @@ async function openEditor(file?: File) {
   window.close();
 }
 
+/** The background takes the shot: the popup closes before the page can be captured. */
+function screenshot(mode: 'area' | 'page') {
+  browser.runtime.sendMessage({ target: 'background', type: 'screenshot', mode }).catch(() => {});
+  setTimeout(() => window.close(), 50);
+}
+
 const webpHelp = { png: 'PNG: lossless', jpeg: 'JPEG: lossy, quality 95', off: '' };
 const webmHelp = { remux: 'MP4: streams copied, no re-encode', h264: 'H.264: re-encoded, plays everywhere', off: '' };
 
@@ -64,6 +70,15 @@ export function Popup() {
       <button type="button" class="button primary choose" onClick={chooseImage}>
         <Icon name="photo" /> Choose Image…
       </button>
+
+      <div class="shots">
+        <button type="button" class="button" onClick={() => screenshot('area')} title="Alt+Shift+S on any page">
+          <Icon name="crop" /> Select Area
+        </button>
+        <button type="button" class="button" onClick={() => screenshot('page')}>
+          <Icon name="photo" /> Visible Page
+        </button>
+      </div>
 
       <section class="settings glass" data-off={!settings.auto}>
         <Toggle checked={settings.auto} onChange={setAuto}>Convert downloads</Toggle>

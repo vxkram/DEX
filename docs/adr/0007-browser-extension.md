@@ -25,6 +25,12 @@ The extension can't do what ImageIO and libjpeg-turbo do on the Mac. Every pixel
 - **GIF** is the default output for an animation. **PNG, JPEG or WebP** save the frame on the playhead as a still image. That's the user's choice, so it's noted, not counted as a loss.
 - GIFs are written with gifenc. Each frame gets an **exact palette** when it has 256 colours or fewer, so cropping a GIF loses nothing. Only frames with more colours, for example after resizing or a blurred background, are quantized. Since only the encoder can know that, it reports it, and the verdict turns lossy. Partial transparency becomes fully clear or fully solid, and that's reported too.
 
+## Screenshots
+- **Select area** (popup, right-click, or Alt+Shift+S) injects a small overlay into the page: it dims the page, you drag a box, then the overlay removes itself, the page repaints, and `tabs.captureVisibleTab` captures it. The crop is converted from CSS pixels to the capture's own pixel size, not `devicePixelRatio`, which page zoom changes. **Visible page** skips the overlay.
+- **Save video frame** (right-click a video) draws the `<video>` into a canvas inside the page, at the video's own resolution, not the screen's. A cross-origin or DRM-protected video can't be read that way, and DEX says so and suggests Select area instead.
+- No new permissions: `activeTab` is granted by the click or the shortcut, and `scripting` injects the overlay. Browser pages and add-on stores can't be captured, and DEX says so.
+- Shots open in the editor as PNG, named like macOS screenshots.
+
 ## Downloads
 - The extension can't change a file while it downloads, or read one that's been saved. So DEX lets the download finish, **fetches the URL again**, converts that copy, and saves it next to the original with a new extension. Only once the converted file has been written does it delete the original, unless **Keep the originals too** is on.
 - When anything fails, the original simply stays and a notification says why. Examples: the site refuses a second request, the file is a `blob:` the page made, it's over the size limit, or the codec can't be copied.

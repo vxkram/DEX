@@ -3,6 +3,8 @@ import { defineBackground } from 'wxt/utils/define-background';
 import type { Job, JobResult } from '@/lib/downloads/convert-download';
 import { baseName, kindOf, withExtension } from '@/lib/shared/names';
 import { allSites, loadSettings } from '@/lib/downloads/settings';
+import { cropCapture, screenshotName, type Area } from '@/lib/capture/screenshot';
+import { putFile } from '@/lib/shared/file-store';
 
 type DownloadItem = Browser.downloads.DownloadItem;
 
@@ -124,9 +126,13 @@ export default defineBackground(() => {
   browser.runtime.onInstalled.addListener(() => {
     browser.contextMenus.create({ id: 'dex-image', title: 'Edit with DEX…', contexts: ['image'] });
     browser.contextMenus.create({ id: 'dex-media', title: 'Save as MP4 with DEX…', contexts: ['video', 'audio'] });
+    browser.contextMenus.create({ id: 'dex-frame', title: 'Save video frame with DEX', contexts: ['video'] });
+    browser.contextMenus.create({ id: 'dex-area', title: 'Screenshot an area with DEX', contexts: ['page', 'selection', 'link', 'frame', 'video'] });
   });
 
   browser.contextMenus.onClicked.addListener((info, tab) => {
+    if (info.menuItemId === 'dex-area' && tab) return startArea(tab);
+    if (info.menuItemId === 'dex-frame' && tab) return saveFrame(tab, info.frameId ?? 0, info.srcUrl);
     const src = info.srcUrl;
     if (!src) return;
     if (info.menuItemId === 'dex-image') {
@@ -176,5 +182,87 @@ export default defineBackground(() => {
       },
     }).then(([result]) => sendResponse({ dataUrl: result?.result }), (error) => sendResponse({ error: String(error) }));
     return true;
+  });
+
+  // MARK: Screenshots
+
+  const protectedPage = 'Browsers don’t let extensions capture this page (their own pages and add-on stores are protected).';
+
+  /** Opens an image in the editor, in a tab next to the one it came from. */
+  async function openInEditor(blob: Blob, name: string, from?: Browser.tabs.Tab) {
+    const page = new URL(browser.runtime.getURL('/editor.html'));
+    page.searchParams.set('file', await putFile({ blob, name }));
+    await browser.tabs.create({ url: page.href, index: from ? from.index + 1 : undefined });
+  }
+
+  async function startArea(tab: Browser.tabs.Tab) {
+    try {
+      await browser.scripting.executeScript({ target: { tabId: tab.id! }, files: ['/selector.js'] });
+    } catch {
+      notify(protectedPage);
+    }
+  }
+
+  async function captureTab(tab: Browser.tabs.Tab, area: Area | null, viewport: { width: number; height: number }) {
+    try {
+      const dataUrl = await browser.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+      await openInEditor(await cropCapture(dataUrl, area, viewport), `${screenshotName()}.png`, tab);
+    } catch {
+      notify(protectedPage);
+    }
+  }
+
+  /** The video's own frame, at its full resolution, read inside the page. */
+  async function saveFrame(tab: Browser.tabs.Tab, frameId: number, src?: string) {
+    try {
+      const [{ result }] = await browser.scripting.executeScript({
+        target: { tabId: tab.id!, frameIds: [frameId] },
+        args: [src ?? ''],
+        func: (src: string) => {
+          const videos = [...document.querySelectorAll('video')];
+          const video = videos.find((v) => src && (v.currentSrc === src || v.src === src))
+            ?? videos.filter((v) => v.videoWidth > 0).sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0];
+          if (!video || !video.videoWidth) return { error: 'There’s no video frame to save yet.' };
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          canvas.getContext('2d')!.drawImage(video, 0, 0);
+          try {
+            return { dataUrl: canvas.toDataURL('image/png'), title: document.title, time: video.currentTime };
+          } catch {
+            return { error: 'This site protects its video, so DEX can’t copy the frame. Use “Screenshot an area” instead.' };
+          }
+        },
+      });
+      const reply = result as { dataUrl?: string; title?: string; time?: number; error?: string } | undefined;
+      if (!reply?.dataUrl) return notify(reply?.error ?? protectedPage);
+      const t = Math.floor(reply.time ?? 0);
+      const stamp = `${Math.floor(t / 60)}.${String(t % 60).padStart(2, '0')}`;
+      const title = (reply.title ?? 'Video').replace(/ - YouTube$/, '').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 80).trim() || 'Video';
+      await openInEditor(await (await fetch(reply.dataUrl)).blob(), `${title} ${stamp}.png`, tab);
+    } catch {
+      notify(protectedPage);
+    }
+  }
+
+  browser.commands.onCommand.addListener(async (command) => {
+    if (command !== 'screenshot-area') return;
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tab) startArea(tab);
+  });
+
+  browser.runtime.onMessage.addListener((message: { target?: string; type: string; mode?: 'area' | 'page'; rect?: Area | null; viewport?: { width: number; height: number } }, sender) => {
+    if (message.target !== 'background') return;
+    if (message.type === 'area-selected' && sender.tab) {
+      captureTab(sender.tab, message.rect ?? null, message.viewport!);
+    } else if (message.type === 'screenshot') {
+      // From the popup, which closes as soon as it asks.
+      browser.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+        if (!tab) return;
+        if (message.mode === 'area') startArea(tab);
+        // A whole-page shot isn't cropped, so the viewport size doesn't matter.
+        else captureTab(tab, null, { width: 1, height: 1 });
+      });
+    }
   });
 });

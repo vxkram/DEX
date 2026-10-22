@@ -12,3 +12,7 @@ body { width: 280px; font-size: 12px; }
 .settings[data-off='true'] :is(.row, .caption) { opacity: 0.45; }
 .settings .toggle { font-size: 12px; }
 .settings .segmented button { min-height: 22px; font-size: 11px; }
+
+.shots { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.shots .button { min-height: 30px; padding: 0 8px; font-size: 12px; }
+.shots .button svg { width: 14px; height: 14px; }
