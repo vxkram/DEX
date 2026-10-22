@@ -212,12 +212,14 @@ private struct CompositeStage: View {
                     // Bottom to top, the opened image among the layers.
                     ForEach(document.canvasOrder, id: \.self) { id in
                         if let id, let layer = document.layers.first(where: { $0.id == id }) {
-                            LayerView(document: document, layer: layer, scale: scale, isEditable: document.tool == .compose)
+                            LayerView(document: document, layer: layer, canvas: layout.canvas, scale: scale,
+                                      isEditable: document.tool == .compose)
                         } else if id == nil {
                             let placement = document.basePlacement
                             PlacedItem(placement: placement, aspectRatio: Double(base.width) / Double(max(base.height, 1)),
-                                       scale: scale, isEditable: document.tool == .compose, isSelected: document.isBaseSelected,
-                                       select: { document.selectBase() }, update: { document.updateBase($0) }) {
+                                       canvas: layout.canvas, scale: scale, isEditable: document.tool == .compose,
+                                       isSelected: document.isBaseSelected, select: { document.selectBase() },
+                                       update: { document.updateBase($0) }, guides: { document.centreGuides = $0 }) {
                                 EditedBase(preview: preview, orientation: document.geometry.orientation, display: display, crop: crop,
                                            frame: document.geometry.frame, opaque: !document.target.supportsAlpha,
                                            scale: scale * placement.width / CGFloat(base.width))
@@ -237,7 +239,8 @@ private struct CompositeStage: View {
 
                 if document.composeMode == .layers {
                     ForEach(document.layers) { layer in
-                        LayerView(document: document, layer: layer, scale: scale, isEditable: document.tool == .compose)
+                        LayerView(document: document, layer: layer, canvas: layout.canvas, scale: scale,
+                                  isEditable: document.tool == .compose)
                     }
                 } else if document.composeMode != .canvas {
                     ForEach(Array(document.arrangedImages.enumerated()), id: \.element.url) { index, image in
@@ -255,6 +258,7 @@ private struct CompositeStage: View {
                 }
             }
             .frame(width: CGFloat(layout.canvas.width) * scale, height: CGFloat(layout.canvas.height) * scale, alignment: .topLeading)
+            .overlay { CentreGuideLines(guides: document.centreGuides) }
             .clipped()
             .shadow(color: .black.opacity(0.28), radius: 4, y: 2)
             .shadow(color: .black.opacity(0.45), radius: 36, y: 22)
@@ -354,14 +358,16 @@ struct EditedBase: View {
 private struct LayerView: View {
     let document: ImageDocument
     let layer: OverlayLayer
+    let canvas: PixelSize
     let scale: CGFloat
     let isEditable: Bool
 
     var body: some View {
-        PlacedItem(placement: layer.placement, aspectRatio: layer.aspectRatio, scale: scale, isEditable: isEditable,
-                   isSelected: document.selectedLayerID == layer.id && !document.isBaseSelected,
+        PlacedItem(placement: layer.placement, aspectRatio: layer.aspectRatio, canvas: canvas, scale: scale,
+                   isEditable: isEditable, isSelected: document.selectedLayerID == layer.id && !document.isBaseSelected,
                    select: { document.selectLayer(layer.id) },
-                   update: { change in document.updateLayer(layer.id) { change(&$0.placement) } }) {
+                   update: { change in document.updateLayer(layer.id) { change(&$0.placement) } },
+                   guides: { document.centreGuides = $0 }) {
             if let preview = document.extraPreviews[layer.image.url] {
                 Image(decorative: preview.cgImage, scale: 1).resizable().interpolation(.high)
             } else {
@@ -377,11 +383,14 @@ private struct PlacedItem<Content: View>: View {
     let placement: LayerPlacement
     /// Width / height of what is drawn.
     let aspectRatio: Double
+    let canvas: PixelSize
     let scale: CGFloat
     let isEditable: Bool
     let isSelected: Bool
     let select: () -> Void
     let update: ((inout LayerPlacement) -> Void) -> Void
+    /// Reports when a drag is snapped to the page's centre lines.
+    let guides: (CentreGuides) -> Void
     @ViewBuilder let content: Content
 
     @State private var moveStart: CGPoint?
@@ -418,12 +427,24 @@ private struct PlacedItem<Content: View>: View {
                     moveStart = start
                     select()
                 }
+                // Within a few screen points of the centre, it snaps there.
+                let reach = 8 / scale
+                let midX = Double(canvas.width) / 2, midY = Double(canvas.height) / 2
+                var x = start.x + value.translation.width / scale
+                var y = start.y + value.translation.height / scale
+                let snapsX = abs(x - midX) < reach, snapsY = abs(y - midY) < reach
+                if snapsX { x = midX }
+                if snapsY { y = midY }
                 update {
-                    $0.centerX = (start.x + value.translation.width / scale).rounded()
-                    $0.centerY = (start.y + value.translation.height / scale).rounded()
+                    $0.centerX = x.rounded()
+                    $0.centerY = y.rounded()
                 }
+                guides(CentreGuides(vertical: snapsX, horizontal: snapsY))
             }
-            .onEnded { _ in moveStart = nil }
+            .onEnded { _ in
+                moveStart = nil
+                guides(CentreGuides())
+            }
     }
 
     private var resize: some Gesture {
@@ -436,6 +457,28 @@ private struct PlacedItem<Content: View>: View {
                 update { $0.width = max(16, (start + delta).rounded()) }
             }
             .onEnded { _ in resizeStart = nil }
+    }
+}
+
+/// Thin lines through the page's centre while an item is snapped to it.
+private struct CentreGuideLines: View {
+    let guides: CentreGuides
+
+    var body: some View {
+        GeometryReader { proxy in
+            Path { path in
+                if guides.vertical {
+                    path.move(to: CGPoint(x: proxy.size.width / 2, y: 0))
+                    path.addLine(to: CGPoint(x: proxy.size.width / 2, y: proxy.size.height))
+                }
+                if guides.horizontal {
+                    path.move(to: CGPoint(x: 0, y: proxy.size.height / 2))
+                    path.addLine(to: CGPoint(x: proxy.size.width, y: proxy.size.height / 2))
+                }
+            }
+            .stroke(Theme.ember, style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+        }
+        .allowsHitTesting(false)
     }
 }
 

@@ -9,10 +9,14 @@ struct ComposePanel: View {
 
     var body: some View {
         ToolPanelBody(document: document) {
+            CanvasButton(isSelected: document.composeMode == .canvas) {
+                document.setComposeMode(.canvas)
+            }
+
             VStack(spacing: 10) {
                 PanelSectionHeader("Layout")
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 5), spacing: 5) {
-                    ForEach(ComposeMode.allCases) { mode in
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+                    ForEach(ComposeMode.allCases.filter { $0 != .canvas }) { mode in
                         ModeButton(mode: mode, isSelected: document.composeMode == mode) {
                             document.setComposeMode(mode)
                         }
@@ -59,13 +63,47 @@ private struct ModeButton: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: mode.symbol).font(.system(size: 15, weight: .medium))
-                Text(mode.title).font(.caption2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.7)
+                Text(mode.title).font(.caption2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity, minHeight: 48)
             .foregroundStyle(isSelected ? .white : .primary)
             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(isSelected ? Theme.ember : .white.opacity(0.07)))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.white.opacity(isSelected ? 0 : 0.08)))
             .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+/// Canvas gets its own large button: a page you design, not a layout.
+private struct CanvasButton: View {
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: ComposeMode.canvas.symbol)
+                    .font(.system(size: 26, weight: .medium))
+                    .frame(width: 40)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Canvas").font(.title3.weight(.semibold))
+                    Text("A page to design on: A4, Story, any size")
+                        .font(.caption)
+                        .foregroundStyle(isSelected ? .white.opacity(0.85) : .secondary)
+                }
+                Spacer(minLength: 0)
+                if isSelected { Image(systemName: "checkmark.circle.fill").font(.title3) }
+            }
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, minHeight: 72)
+            .foregroundStyle(isSelected ? .white : .primary)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(isSelected ? Theme.ember : .white.opacity(0.08)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(isSelected ? .clear : Theme.ember.opacity(0.5), lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -217,7 +255,7 @@ private struct LayerControls: View {
         let height = placement.width * Double(native.height) / Double(max(native.width, 1))
         VStack(alignment: .leading, spacing: 14) {
             PanelSectionHeader(title)
-            Explanation("Drag it on the picture to move it; drag its corner to resize.")
+            Explanation("Drag it on the picture to move it; it snaps to the centre. Drag its corner to resize.")
 
             LabeledSlider(title: "Size", value: placement.width, range: 16...Double(max(canvas.width, native.width)) * 1.5,
                           display: "\(Int(placement.width.rounded())) × \(Int(height.rounded()))") { width in
@@ -242,7 +280,16 @@ private struct LayerControls: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("Position").font(.callout)
+                HStack {
+                    Text("Position").font(.callout)
+                    Spacer()
+                    Button("Centre", systemImage: "align.horizontal.center") {
+                        update { $0.centerX = (Double(canvas.width) / 2).rounded(); $0.centerY = (Double(canvas.height) / 2).rounded() }
+                    }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .help("Put it in the middle of the page")
+                }
                 AnchorGrid { column, row in
                     let margin = Double(min(canvas.width, canvas.height)) * 0.04
                     let halfW = placement.width / 2, halfH = height / 2
@@ -384,12 +431,12 @@ private struct CanvasSizeSection: View {
     let document: ImageDocument
 
     private static let presets: [(title: String, detail: String, size: PixelSize?)] = [
-        ("Photo", "its own size", nil),
+        ("A4", "2480 × 3508", PixelSize(width: 2480, height: 3508)),
+        ("Letter", "2550 × 3300", PixelSize(width: 2550, height: 3300)),
         ("Square", "1080 × 1080", PixelSize(width: 1080, height: 1080)),
         ("Story", "1080 × 1920", PixelSize(width: 1080, height: 1920)),
         ("Wide", "1920 × 1080", PixelSize(width: 1920, height: 1080)),
-        ("A4", "2480 × 3508", PixelSize(width: 2480, height: 3508)),
-        ("Letter", "2550 × 3300", PixelSize(width: 2550, height: 3300)),
+        ("Photo", "its own size", nil),
     ]
 
     var body: some View {

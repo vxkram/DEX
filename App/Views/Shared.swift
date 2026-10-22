@@ -159,6 +159,8 @@ struct ExportFooter: View {
                 EmptyView()
             }
 
+            OutputSizeLine(document: document)
+
             Button {
                 document.export()
             } label: {
@@ -175,6 +177,32 @@ struct ExportFooter: View {
             .help("Export (⌘E)")
         }
         .padding(16)
+    }
+}
+
+/// Exactly what will be saved, in pixels, right above the Export button.
+struct OutputSizeLine: View {
+    let document: ImageDocument
+
+    var body: some View {
+        if let plan = document.plan {
+            let size = plan.outputDisplaySize
+            HStack(alignment: .firstTextBaseline) {
+                Text(document.exportAsPDF ? "PDF page from" : "Saves at")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(verbatim: "\(size.width) × \(size.height) px")
+                    .font(.system(.title3, design: .monospaced, weight: .semibold))
+                    .foregroundStyle(Theme.ember)
+                if !document.exportAsPDF {
+                    Text(verbatim: plan.request.target.displayName)
+                        .font(.technicalSmall)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .help("The exported file is exactly this many pixels wide and high.")
+        }
     }
 }
 

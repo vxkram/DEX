@@ -78,6 +78,10 @@ final class ImageDocument {
     var pdfImages: [ComposedImage] = []
     /// Convert saves a PDF instead of an image (PDF isn't an ImageFormat).
     var exportAsPDF = false
+    /// The name exports are saved under (no extension); nil = the file's own.
+    var outputName: String?
+    /// While dragging on a canvas: the item is snapped to the page's centre.
+    var centreGuides = CentreGuides()
 
     // MARK: Compose state
     var composeMode: ComposeMode = .layers
@@ -201,6 +205,9 @@ final class ImageDocument {
             return .canvas(canvas)
         }
     }
+
+    /// A4 at 300 dpi: where a new canvas starts.
+    static let a4 = PixelSize(width: 2480, height: 3508)
 
     var canvas: Canvas {
         Canvas(size: canvasSize, background: background, base: basePlacement, layers: layers,
@@ -350,8 +357,8 @@ final class ImageDocument {
         let wasLayered = composeMode.isLayered
         let oldCanvas = layerCanvasSize
         if mode == .canvas, let base = framedSize {
-            canvasSize = base
-            basePlacement = .fitted(base, on: base)
+            canvasSize = Self.a4
+            basePlacement = .fitted(base, on: Self.a4)
             canvasBasePosition = 0
         }
         composeMode = mode
@@ -454,6 +461,23 @@ final class ImageDocument {
         if sourceURL == url { isLoading = false }
     }
 
+    /// The export name without extension: the chosen one or the file's own.
+    var exportBaseName: String {
+        outputName ?? sourceURL?.deletingPathExtension().lastPathComponent ?? "Untitled"
+    }
+
+    func renameOutput(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+        outputName = trimmed.isEmpty || trimmed == sourceURL?.deletingPathExtension().lastPathComponent ? nil : trimmed
+    }
+
+    /// Stands in for the source when naming a new file, so save panels
+    /// suggest the chosen name (with " 2" etc. if it's taken).
+    private func namingURL(_ source: URL) -> URL {
+        source.deletingLastPathComponent().appendingPathComponent(exportBaseName).appendingPathExtension(source.pathExtension)
+    }
+
     /// Closes the open file and returns to the drop zone.
     func goHome() {
         reset()
@@ -476,6 +500,7 @@ final class ImageDocument {
         cropAspect = .free
         fitBackground = .white
         exportAsPDF = false
+        outputName = nil
         optimize = false
         quality = .maximum
         estimate = nil
@@ -838,7 +863,7 @@ final class ImageDocument {
         guard let sourceURL, !isExporting else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
-        panel.nameFieldStringValue = SafeOutput.defaultDestination(for: sourceURL, pathExtension: "pdf").lastPathComponent
+        panel.nameFieldStringValue = SafeOutput.defaultDestination(for: namingURL(sourceURL), pathExtension: "pdf").lastPathComponent
         panel.directoryURL = sourceURL.deletingLastPathComponent()
         panel.canCreateDirectories = true
         panel.isExtensionHidden = false
@@ -1027,7 +1052,7 @@ final class ImageDocument {
         let panel = NSSavePanel()
         let format = plan.request.target
         panel.nameFieldStringValue = SafeOutput.defaultDestination(
-            for: sourceURL, pathExtension: format.preferredFileExtension
+            for: namingURL(sourceURL), pathExtension: format.preferredFileExtension
         ).lastPathComponent
         panel.directoryURL = sourceURL.deletingLastPathComponent()
         panel.allowedContentTypes = UTType(format.typeIdentifier).map { [$0] } ?? []
@@ -1083,6 +1108,11 @@ final class ImageDocument {
     func revealInFinder(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
+}
+
+struct CentreGuides: Equatable {
+    var vertical = false
+    var horizontal = false
 }
 
 struct CropDrag: Equatable {

@@ -83,11 +83,9 @@ private struct TopBar: View {
     var body: some View {
         HStack(spacing: 12) {
             HomeButton(document: document)
-            if let url = document.sourceURL {
-                Text(url.lastPathComponent)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            if document.sourceURL != nil {
+                RenameButton(document: document)
+                FileNameLabel(document: document)
             }
             if let pdf = document.pdfInfo {
                 Text(verbatim: "\(pdf.pageCount) page\(pdf.pageCount == 1 ? "" : "s")  ·  \(ByteCountFormatter.string(fromByteCount: pdf.fileSize, countStyle: .file))")
@@ -137,6 +135,75 @@ struct HomeButton: View {
             .tint(.clear)
             .controlSize(.small)
             .help("Home (⇧⌘H)")
+    }
+}
+
+/// The open file's name, shortened with "…" when long; the full name is
+/// in the tooltip. Shows the export name once it has been changed.
+struct FileNameLabel: View {
+    let document: ImageDocument
+
+    var body: some View {
+        if let url = document.sourceURL {
+            let name = document.outputName.map { "\($0) (from \(url.lastPathComponent))" } ?? url.lastPathComponent
+            Text(document.outputName ?? url.deletingPathExtension().lastPathComponent)
+                .font(.headline)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: 240, alignment: .leading)
+                .help(name)
+        }
+    }
+}
+
+/// A pencil that sets the name exports are saved under.
+struct RenameButton: View {
+    let document: ImageDocument
+    @State private var isEditing = false
+    @State private var text = ""
+
+    var body: some View {
+        Button("Rename", systemImage: "pencil") {
+            text = document.exportBaseName
+            isEditing = true
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.glass)
+        .tint(.clear)
+        .controlSize(.small)
+        .help("Name the exported file")
+        .popover(isPresented: $isEditing, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Save as").font(.headline)
+                TextField("File name", text: $text)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 260)
+                    .onSubmit(commit)
+                Text("Used when you export. The original file keeps its name.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    if document.outputName != nil {
+                        Button("Use original name") {
+                            document.renameOutput("")
+                            isEditing = false
+                        }
+                        .buttonStyle(.link)
+                        .tint(Theme.ember)
+                    }
+                    Spacer()
+                    Button("Done", action: commit)
+                        .keyboardShortcut(.defaultAction)
+                        .tint(Theme.ember)
+                }
+            }
+            .padding(14)
+        }
+    }
+
+    private func commit() {
+        document.renameOutput(text)
+        isEditing = false
     }
 }
 
