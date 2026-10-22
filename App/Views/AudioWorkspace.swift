@@ -161,18 +161,25 @@ private struct TimelineEditor: View {
             .simultaneousGesture(
                 MagnifyGesture()
                     .onChanged { value in
-                        audio.zoom(by: value.magnification / lastMagnification, around: scale.frame(value.startLocation.x))
+                        audio.zoom(by: value.magnification / lastMagnification,
+                                   atFraction: value.startLocation.x / max(geometry.size.width, 1))
                         lastMagnification = value.magnification
                     }
                     .onEnded { _ in lastMagnification = 1 }
             )
             .background {
-                ScrollWheelCatcher { deltaX, deltaY, zooms, location in
+                ScrollWheelCatcher { deltaX, deltaY, zooms, precise, location in
+                    let width = max(geometry.size.width, 1)
                     if zooms {
-                        audio.zoom(by: pow(1.01, deltaY), around: scale.frame(location))
+                        // Trackpads send many small deltas; a mouse wheel sends
+                        // a few notches (sped up when spun), so each notch is
+                        // one even step instead.
+                        let factor = precise ? pow(1.01, Double(deltaY)) : pow(1.2, Double(min(max(deltaY, -3), 3)))
+                        audio.zoom(by: factor, atFraction: location / width)
                     } else {
-                        let delta = abs(deltaX) > abs(deltaY) ? -deltaX : -deltaY
-                        audio.scrollVisible(to: audio.visible.start + Int64(Double(delta) / Double(max(geometry.size.width, 1)) * Double(audio.visible.length)))
+                        var delta = abs(deltaX) > abs(deltaY) ? -deltaX : -deltaY
+                        if !precise { delta *= 12 }  // lines → points
+                        audio.scrollVisible(to: audio.visible.start + Int64(Double(delta) / Double(width) * Double(audio.visible.length)))
                     }
                 }
             }
@@ -233,23 +240,29 @@ struct BarWaveform: View {
             let step = style.barWidth + style.gap
             let count = max(Int(size.width / step), 1)
             let perBucket = Double(waveform.framesPerBucket)
-            let bars = (0..<count).map { index in
-                let start = Double(visible.start) + Double(visible.length) * Double(index) / Double(count)
-                let end = Double(visible.start) + Double(visible.length) * Double(index + 1) / Double(count)
+            // Bars sit on a grid fixed in time, not on the screen, so
+            // scrolling slides them instead of re-cutting (and flickering)
+            // every bar.
+            let barFrames = max(Double(visible.length) / Double(count), 1)
+            let firstBar = (Double(visible.start) / barFrames).rounded(.down)
+            let shift = (firstBar * barFrames - Double(visible.start)) / barFrames * step
+            let bars = (0...count).map { index in
+                let start = (firstBar + Double(index)) * barFrames
+                let end = start + barFrames
                 let first = Int(start / perBucket)
                 let level = waveform.level(buckets: first..<max(Int(ceil(end / perBucket)), first + 1))
                 return (level: level, middle: Int64((start + end) / 2))
             }
-            // Scaled to the loudest bar on screen, so quiet recordings and
-            // ones with a single loud moment still fill the space.
-            let reference = max(bars.map(\.level).max() ?? 0, 1e-6)
+            // Scaled to the file's loudest moment, the same at every zoom,
+            // so heights don't jump while zooming. Quiet files still fill.
+            let reference = max(waveform.maxRMS, 1e-6)
             var played = Path(), unplayed = Path(), outside = Path()
-            for (index, bar) in bars.enumerated() {
+            for (index, bar) in bars.enumerated() where CGFloat(index) * step + shift < size.width {
                 // A gentle curve keeps quiet passages visible and loud ones
                 // from all hitting the top.
-                let height = max(CGFloat(pow(Double(bar.level / reference), 0.75)) * size.height * 0.96, 2)
+                let height = max(CGFloat(pow(Double(min(bar.level / reference, 1)), 0.75)) * size.height * 0.96, 2)
                 // Mirrored around the middle, like a waveform.
-                let rect = CGRect(x: CGFloat(index) * step, y: (size.height - height) / 2, width: style.barWidth, height: height)
+                let rect = CGRect(x: CGFloat(index) * step + shift, y: (size.height - height) / 2, width: style.barWidth, height: height)
                 let path = Path(roundedRect: rect, cornerRadius: style.barWidth / 2)
                 if !kept.contains(bar.middle) { outside.addPath(path) }
                 else if bar.middle < playhead { played.addPath(path) }
@@ -534,7 +547,7 @@ private struct AudioShortcuts: NSViewRepresentable {
 /// Catches scroll-wheel and trackpad scrolling over the waveform without
 /// taking clicks from the SwiftUI gestures above it.
 private struct ScrollWheelCatcher: NSViewRepresentable {
-    let onScroll: (_ deltaX: CGFloat, _ deltaY: CGFloat, _ zooms: Bool, _ x: CGFloat) -> Void
+    let onScroll: (_ deltaX: CGFloat, _ deltaY: CGFloat, _ zooms: Bool, _ precise: Bool, _ x: CGFloat) -> Void
 
     func makeNSView(context: Context) -> CatcherView {
         let view = CatcherView()
@@ -547,7 +560,7 @@ private struct ScrollWheelCatcher: NSViewRepresentable {
     }
 
     final class CatcherView: NSView {
-        var onScroll: ((CGFloat, CGFloat, Bool, CGFloat) -> Void)?
+        var onScroll: ((CGFloat, CGFloat, Bool, Bool, CGFloat) -> Void)?
         private var monitor: Any?
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -562,7 +575,7 @@ private struct ScrollWheelCatcher: NSViewRepresentable {
                 let point = self.convert(event.locationInWindow, from: nil)
                 guard self.bounds.contains(point) else { return event }
                 let zooms = event.modifierFlags.contains(.command) || event.modifierFlags.contains(.option)
-                self.onScroll?(event.scrollingDeltaX, event.scrollingDeltaY, zooms, point.x)
+                self.onScroll?(event.scrollingDeltaX, event.scrollingDeltaY, zooms, event.hasPreciseScrollingDeltas, point.x)
                 return nil
             }
         }

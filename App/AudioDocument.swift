@@ -215,6 +215,14 @@ final class AudioDocument {
         visible = SampleRange(start, start + length)
     }
 
+    /// Zooms keeping the frame at `fraction` (0...1 across the waveform)
+    /// under the pointer. Uses the current span, not the last drawn one, so
+    /// fast scroll events can't drift.
+    func zoom(by factor: Double, atFraction fraction: Double) {
+        let anchor = visible.start + Int64(Double(visible.length) * min(max(fraction, 0), 1))
+        zoom(by: factor, around: anchor)
+    }
+
     func zoomToFit() { visible = SampleRange(0, frames) }
 
     /// Zooms to what's kept.
