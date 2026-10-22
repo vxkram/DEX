@@ -93,13 +93,7 @@ private struct TopBar: View {
                     .foregroundStyle(.secondary)
             }
             if let info = document.info {
-                let output = document.plan?.outputDisplaySize
-                let edited = output.map { $0 != info.displaySize } ?? false
-                Text(verbatim: "\(info.displayWidth) × \(info.displayHeight)"
-                     + (edited ? " → \(output!.width) × \(output!.height)" : "")
-                     + "  ·  \(ByteCountFormatter.string(fromByteCount: info.fileSize, countStyle: .file))")
-                    .font(.technicalSmall)
-                    .foregroundStyle(.secondary)
+                SizeSummary(info: info, output: document.plan?.outputDisplaySize)
             }
             Spacer(minLength: 12)
             if document.preview?.isHDR == true {
@@ -146,11 +140,11 @@ struct FileNameLabel: View {
     var body: some View {
         if let url = document.sourceURL {
             let name = document.outputName.map { "\($0) (from \(url.lastPathComponent))" } ?? url.lastPathComponent
-            Text(document.outputName ?? url.deletingPathExtension().lastPathComponent)
+            // Shortened by hand so the label is only as wide as its text.
+            let full = document.outputName ?? url.deletingPathExtension().lastPathComponent
+            Text(verbatim: full.count > 28 ? full.prefix(27) + "…" : full)
                 .font(.headline)
                 .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: 240, alignment: .leading)
                 .help(name)
         }
     }
@@ -204,6 +198,36 @@ struct RenameButton: View {
     private func commit() {
         document.renameOutput(text)
         isEditing = false
+    }
+}
+
+/// "437 × 702 → 2480 × 3508 · 29 KB": the output size stands out, and the
+/// arrow only appears when the pixel size actually changes.
+private struct SizeSummary: View {
+    let info: MediaInfo
+    let output: PixelSize?
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if let output, output != info.displaySize {
+                Text(verbatim: "\(info.displayWidth) × \(info.displayHeight)")
+                    .font(.technicalSmall)
+                    .foregroundStyle(.secondary)
+                Image(systemName: "arrow.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(verbatim: "\(output.width) × \(output.height) px")
+                    .font(.system(.title3, design: .monospaced, weight: .semibold))
+                    .foregroundStyle(Theme.ember)
+            } else {
+                Text(verbatim: "\(info.displayWidth) × \(info.displayHeight) px")
+                    .font(.system(.title3, design: .monospaced, weight: .semibold))
+            }
+            Text(verbatim: "·  " + ByteCountFormatter.string(fromByteCount: info.fileSize, countStyle: .file))
+                .font(.technicalSmall)
+                .foregroundStyle(.secondary)
+        }
+        .help("Original size → the size you'll export, in pixels")
     }
 }
 

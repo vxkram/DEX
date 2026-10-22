@@ -13,9 +13,11 @@ struct ImageStage: View {
             let available = CGSize(width: max(proxy.size.width - 24, 1), height: max(proxy.size.height - 24, 1))
             if let preview = document.preview, let display = document.displaySize {
                 Group {
+                    // Crop edits the opened photo on its own, even when it
+                    // sits on a canvas or among other images.
                     if isCropping && !document.isFitting {
                         croppingStage(preview, display: display, available: available)
-                    } else if document.composition != nil {
+                    } else if document.composition != nil && !isCropping {
                         CompositeStage(document: document, available: available)
                     } else {
                         resultStage(preview, display: display, available: available)
