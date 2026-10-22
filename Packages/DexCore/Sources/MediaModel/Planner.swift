@@ -26,6 +26,11 @@ public enum Planner {
         }
 
         var plan = baselinePlan(source, sourceFormat: sourceFormat, request: request)
+        // Enhance can make the output far larger than the source.
+        let outputMegapixels = plan.expectedWidth * plan.expectedHeight / 1_000_000
+        guard outputMegapixels <= maxMegapixels else {
+            throw PlanError.tooLarge(megapixels: outputMegapixels)
+        }
         plan.verdict = plan.strategy == .reencode || plan.notes.contains(where: \.isLoss)
             ? (plan.notes.contains(where: \.isLoss) ? .lossy : .lossless)
             : .noReencode
@@ -56,10 +61,12 @@ public enum Planner {
         let fullFrame = PixelRect(x: 0, y: 0, width: displaySize.width, height: displaySize.height)
         let crop = geometry.crop?.clamped(to: displaySize).flatMap { $0 == fullFrame ? nil : $0 }
         let croppedSize = crop?.size ?? displaySize
+        let enhance = geometry.enhance
+        let enhancedSize = enhance?.output(for: croppedSize) ?? croppedSize
         // A frame that wouldn't add anything (the picture already has its
         // shape) is no frame.
-        let frame = geometry.frame.flatMap { $0.canvas(for: croppedSize).canvas == croppedSize ? nil : $0 }
-        let framedSize = frame?.canvas(for: croppedSize).canvas ?? croppedSize
+        let frame = geometry.frame.flatMap { $0.canvas(for: enhancedSize).canvas == enhancedSize ? nil : $0 }
+        let framedSize = frame?.canvas(for: enhancedSize).canvas ?? enhancedSize
         let resize = geometry.resize.flatMap { $0 == framedSize || $0.width < 1 || $0.height < 1 ? nil : $0 }
         // Animations: a trim when they stay animated, one chosen frame when not.
         let lastFrame = max(source.frameCount - 1, 0)
@@ -70,12 +77,12 @@ public enum Planner {
         }
         let still = source.isAnimated && !keepsAnimation ? min(max(geometry.stillFrame ?? 0, 0), lastFrame) : 0
         let picksFrames = trim != nil || still != 0
-        let changesPixels = crop != nil || frame != nil || resize != nil
+        let changesPixels = crop != nil || enhance != nil || frame != nil || resize != nil
 
         if let composition = request.composition, !composition.isEmpty {
             return compositePlan(
                 source, sourceFormat: sourceFormat, request: request, composition: composition,
-                orientation: total, crop: crop, frame: frame, baseSize: framedSize, resize: resize,
+                orientation: total, crop: crop, enhance: enhance, frame: frame, baseSize: framedSize, resize: resize,
                 stillFrame: source.isAnimated ? min(max(geometry.stillFrame ?? 0, 0), lastFrame) : 0
             )
         }
@@ -117,7 +124,8 @@ public enum Planner {
 
         // 2. JPEG crop and/or optimisation on the compressed data: no
         //    decode, no loss.
-        if strategy == .reencode, sourceFormat == .jpeg, target == .jpeg, resize == nil, frame == nil, !wantsLossy,
+        if strategy == .reencode, sourceFormat == .jpeg, target == .jpeg, resize == nil, frame == nil, enhance == nil,
+           !wantsLossy,
            (crop != nil && !geometry.exactCrop) || (crop == nil && (optimizes || request.metadata == .removeAll)),
            let block = source.jpegBlockSize {
             strategy = .losslessJPEGTransform
@@ -148,6 +156,10 @@ public enum Planner {
                 pixelCrop = crop
                 outputSize = resize ?? framedSize
                 if formatCantRotate && !changesPixels { info.append(.orientationApplied) }
+                if let enhance {
+                    losses.append(.aiEnhanced(scale: enhance.scale, style: enhance.style))
+                    if enhance.faces { losses.append(.facesRestored) }
+                }
                 if let frame { info.append(.framed(to: framedSize, background: frame.background)) }
                 if let resize { losses.append(.resampled(from: framedSize, to: resize)) }
             } else {
@@ -182,6 +194,9 @@ public enum Planner {
             }
             if source.hasHDRGainMap && !target.supportsGainMap {
                 losses.append(.hdrDropped(to: target))
+            } else if source.hasHDRGainMap && enhance != nil {
+                preservesHDR = false
+                losses.append(.hdrNotKeptByEnhance)
             } else if source.hasHDRGainMap && frame != nil {
                 preservesHDR = false
                 losses.append(.hdrNotKeptByFit)
@@ -207,6 +222,7 @@ public enum Planner {
             bakedOrientation: bakedOrientation,
             outputOrientation: outputOrientation,
             pixelCrop: pixelCrop,
+            enhance: strategy == .reencode ? enhance : nil,
             frame: strategy == .reencode ? frame : nil,
             firstFrame: strategy == .reencode ? (trim?.lowerBound ?? still) : 0,
             resize: resize,
@@ -221,7 +237,8 @@ public enum Planner {
     /// with every scaled input and lost property disclosed.
     private static func compositePlan(
         _ source: MediaInfo, sourceFormat: ImageFormat, request: ConvertRequest, composition: Composition,
-        orientation: Orientation, crop: PixelRect?, frame: Framing?, baseSize croppedSize: PixelSize, resize: PixelSize?,
+        orientation: Orientation, crop: PixelRect?, enhance: Enhancement?, frame: Framing?, baseSize croppedSize: PixelSize,
+        resize: PixelSize?,
         stillFrame: Int
     ) -> ConversionPlan {
         let target = request.target
@@ -303,6 +320,10 @@ public enum Planner {
         }
         let output = resize ?? canvas
         let framed: [QualityNote] = frame.map { [.framed(to: croppedSize, background: $0.background)] } ?? []
+        if let enhance {
+            losses.insert(.aiEnhanced(scale: enhance.scale, style: enhance.style), at: 0)
+            if enhance.faces { losses.insert(.facesRestored, at: 1) }
+        }
         let combined: QualityNote = if case .canvas = composition {
             .placedOnCanvas(canvas, images: extras.count)
         } else {
@@ -319,6 +340,7 @@ public enum Planner {
             bakedOrientation: orientation.exif,
             outputOrientation: 1,
             pixelCrop: crop,
+            enhance: enhance,
             frame: frame,
             firstFrame: stillFrame,
             resize: resize,

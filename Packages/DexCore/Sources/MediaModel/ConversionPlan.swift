@@ -97,6 +97,9 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
     case imageResampled(name: String, to: PixelSize)
     case hdrNotKeptInComposite
     case hdrNotKeptByFit
+    case aiEnhanced(scale: Int, style: Enhancement.Style)
+    case facesRestored
+    case hdrNotKeptByEnhance
     // Information
     case noAdditionalLoss
     case orientationApplied
@@ -151,6 +154,12 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
             "\(name) is scaled to \(size) (resampled)"
         case .hdrNotKeptInComposite:
             "HDR can't be kept when combining images, so the result is SDR"
+        case .aiEnhanced(let scale, let style):
+            "AI enlarges it \(scale)× (\(style == .anime ? "Anime" : style == .best ? "Best" : "Fast")) and adds detail that wasn't in the original; it can invent texture and change small text"
+        case .facesRestored:
+            "Faces are redrawn by AI, so they can look smoother or a little different"
+        case .hdrNotKeptByEnhance:
+            "HDR can't be kept when enhancing, so the result is SDR"
         case .hdrNotKeptByFit:
             "HDR can't be kept when fitting to a new shape, so the result is SDR"
         case .framed(let size, let background):
@@ -203,6 +212,8 @@ public struct ConversionPlan: Codable, Sendable, Equatable {
     /// Crop in the space the engine works in: stored pixels for
     /// `.losslessJPEGTransform`, pixels after `bakedOrientation` for `.reencode`.
     public var pixelCrop: PixelRect?
+    /// AI upscaling after the crop.
+    public var enhance: Enhancement?
     /// Fit after the crop, when it changes the size.
     public var frame: Framing?
     /// The source frame the output starts at: the trim's first frame for

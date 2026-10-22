@@ -26,7 +26,7 @@ enum WebPWriter {
             let image = if let composition = plan.request.composition, !composition.isEmpty {
                 try Compositor.render(source, plan: plan, name: name, token: token)
             } else {
-                try ImageEngine.planImage(source, index: plan.firstFrame, name: name, plan: plan)
+                try ImageEngine.planImage(source, index: plan.firstFrame, name: name, plan: plan, token: token) { progress?($0 * 0.8) }
             }
             try token.check()
             let colorSpace = rgbColorSpace(of: image)

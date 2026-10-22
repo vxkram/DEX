@@ -151,8 +151,8 @@ public struct Framing: Codable, Sendable, Equatable {
     }
 }
 
-/// Edits applied in display space, in this order: rotate/flip, crop, frame
-/// (Fit), resize.
+/// Edits applied in display space, in this order: rotate/flip, crop,
+/// enhance (AI), frame (Fit), resize.
 public struct Geometry: Codable, Sendable, Equatable {
     /// Rotation and flip on top of the file's own orientation.
     public var orientation: Orientation
@@ -161,7 +161,9 @@ public struct Geometry: Codable, Sendable, Equatable {
     /// Crop exactly, even when a lossless JPEG crop would need to snap to
     /// block boundaries. Forces a re-encode for JPEG.
     public var exactCrop: Bool
-    /// Fit the (cropped) picture onto a canvas of another aspect ratio.
+    /// AI upscaling after the crop.
+    public var enhance: Enhancement?
+    /// Fit the (cropped, enhanced) picture onto a canvas of another aspect ratio.
     public var frame: Framing?
     /// Output size after cropping and framing.
     public var resize: PixelSize?
@@ -171,10 +173,12 @@ public struct Geometry: Codable, Sendable, Equatable {
     public var stillFrame: Int?
 
     public init(orientation: Orientation = .identity, crop: PixelRect? = nil, exactCrop: Bool = false,
-                frame: Framing? = nil, resize: PixelSize? = nil, frameRange: ClosedRange<Int>? = nil, stillFrame: Int? = nil) {
+                enhance: Enhancement? = nil, frame: Framing? = nil, resize: PixelSize? = nil,
+                frameRange: ClosedRange<Int>? = nil, stillFrame: Int? = nil) {
         self.orientation = orientation
         self.crop = crop
         self.exactCrop = exactCrop
+        self.enhance = enhance
         self.frame = frame
         self.resize = resize
         self.frameRange = frameRange
@@ -184,7 +188,8 @@ public struct Geometry: Codable, Sendable, Equatable {
     public static let none = Geometry()
 
     public var isIdentity: Bool {
-        orientation.isIdentity && crop == nil && frame == nil && resize == nil && frameRange == nil && stillFrame == nil
+        orientation.isIdentity && crop == nil && enhance == nil && frame == nil && resize == nil
+            && frameRange == nil && stillFrame == nil
     }
 
     public mutating func rotateClockwise() {

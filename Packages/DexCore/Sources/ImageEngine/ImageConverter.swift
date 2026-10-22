@@ -74,7 +74,7 @@ extension ImageEngine {
     private static func keepSmallerIfOptimizing(
         _ plan: ConversionPlan, from source: URL, output: URL, token: CancellationToken
     ) throws {
-        guard plan.request.optimize, plan.pixelCrop == nil, plan.frame == nil, plan.resize == nil,
+        guard plan.request.optimize, plan.pixelCrop == nil, plan.enhance == nil, plan.frame == nil, plan.resize == nil,
               fileSize(output) >= fileSize(source)
         else { return }
         var request = plan.request
@@ -290,6 +290,7 @@ extension ImageEngine {
             }
             let composes = plan.request.composition.map { !$0.isEmpty } ?? false
             let changesPixels = composes || plan.appliesOrientation || plan.pixelCrop != nil || plan.frame != nil
+                || plan.enhance != nil
                 || plan.resize != nil
             // TIFF compression is only honoured for decoded images, not
             // AddImageFromSource (measured on macOS 27: 36.9 MB vs 10.7 MB).
@@ -299,7 +300,9 @@ extension ImageEngine {
                     image = try Compositor.render(source, plan: plan, name: url.lastPathComponent, token: token)
                 } else {
                     image = changesPixels
-                        ? try planImage(source, index: index, name: url.lastPathComponent, plan: plan)
+                        ? try planImage(source, index: index, name: url.lastPathComponent, plan: plan, token: token) { done in
+                            progress?((Double(frame) + done) / Double(frames) * 0.95)
+                        }
                         : try decodedFrame(source, index: index, name: url.lastPathComponent)
                 }
                 if changesPixels { properties = removingStaleSize(properties) }
@@ -371,8 +374,11 @@ extension ImageEngine {
     /// decoders can scale down while decoding), which avoids holding the
     /// full-resolution image; the exact size is then fitted on the small
     /// image.
-    static func planImage(_ source: CGImageSource, index: Int, name: String, plan: ConversionPlan) throws -> CGImage {
-        if let size = plan.resize, plan.pixelCrop == nil, plan.frame == nil,
+    static func planImage(
+        _ source: CGImageSource, index: Int, name: String, plan: ConversionPlan,
+        token: CancellationToken? = nil, progress: ((Double) -> Void)? = nil
+    ) throws -> CGImage {
+        if let size = plan.resize, plan.pixelCrop == nil, plan.frame == nil, plan.enhance == nil,
            let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
            let width = properties[kCGImagePropertyPixelWidth] as? Int,
            let height = properties[kCGImagePropertyPixelHeight] as? Int,
@@ -392,13 +398,17 @@ extension ImageEngine {
                 return image
             }
         }
-        return try geometryApplied(to: decodedFrame(source, index: index, name: name), plan: plan)
+        return try geometryApplied(to: decodedFrame(source, index: index, name: name), plan: plan, token: token, progress: progress)
     }
 
-    /// Bakes orientation, then crops, frames (Fit) and resizes, as the plan says.
-    static func geometryApplied(to image: CGImage, plan: ConversionPlan) throws -> CGImage {
+    /// Bakes orientation, then crops, enhances, frames (Fit) and resizes, as the plan says.
+    static func geometryApplied(
+        to image: CGImage, plan: ConversionPlan,
+        token: CancellationToken? = nil, progress: ((Double) -> Void)? = nil
+    ) throws -> CGImage {
         var result = try PixelOps.orient(image, plan.bakedOrientation)
         if let crop = plan.pixelCrop { result = try PixelOps.crop(result, crop) }
+        if let enhance = plan.enhance { result = try Enhancer.enhance(result, enhance, token: token, progress: progress) }
         if let frame = plan.frame {
             result = try PixelOps.frame(result, frame, opaque: !plan.request.target.supportsAlpha)
         }

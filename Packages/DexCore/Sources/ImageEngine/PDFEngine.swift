@@ -189,7 +189,7 @@ public enum PDFEngine {
                 return CGImageBox(try Compositor.render(imageSource, plan: plan, name: source.lastPathComponent, token: token))
             }
             let decoded = try ImageEngine.decodedFrame(imageSource, index: plan.firstFrame, name: source.lastPathComponent)
-            return CGImageBox(try ImageEngine.geometryApplied(to: decoded, plan: plan))
+            return CGImageBox(try ImageEngine.geometryApplied(to: decoded, plan: plan, token: token))
         }
     }
 

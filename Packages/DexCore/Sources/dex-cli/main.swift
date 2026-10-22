@@ -11,6 +11,7 @@ let usage = """
       convert <file> --to <format> [options]
                                    Convert, choosing the most lossless path available
       formats [--json]             List image formats this Mac can read and write
+      install-model <zip>...       Install Enhance models (zips of the models-1 release), checksum-verified
       help                         Show this message
 
     convert options:
@@ -23,6 +24,9 @@ let usage = """
       --crop WxH+X+Y               Crop in displayed pixels (after rotate/flip)
       --exact-crop                 Crop exactly, even if a lossless JPEG crop would snap
       --resize WxH                 Resize after cropping (resampling is lossy)
+      --enhance 2|4                AI upscale after cropping (lossy: adds invented detail)
+      --style fast|best|anime      Enhance model (default: fast)
+      --faces                      Also restore faces with AI
       --optimize                   Compress losslessly (JPEG repack, PNG/TIFF re-compress)
       --allow-lossy                Accept a conversion that loses information
       --overwrite                  Replace an existing output file (never the original)
@@ -179,6 +183,21 @@ func parseConvertOptions(_ arguments: [String]) throws -> ConvertOptions {
             let parts = try value(for: argument).split(separator: "x").compactMap { Int($0) }
             guard parts.count == 2 else { throw UsageError(description: "--resize must look like 1920x1080") }
             options.geometry.resize = PixelSize(width: parts[0], height: parts[1])
+        case "--enhance":
+            guard let scale = Int(try value(for: argument)), [2, 4].contains(scale) else {
+                throw UsageError(description: "--enhance must be 2 or 4")
+            }
+            options.geometry.enhance = Enhancement(scale: scale, style: options.geometry.enhance?.style ?? .fast,
+                                                   faces: options.geometry.enhance?.faces ?? false)
+        case "--style":
+            guard let style = Enhancement.Style(rawValue: try value(for: argument)) else {
+                throw UsageError(description: "--style must be fast, best or anime")
+            }
+            options.geometry.enhance = options.geometry.enhance ?? Enhancement()
+            options.geometry.enhance?.style = style
+        case "--faces":
+            options.geometry.enhance = options.geometry.enhance ?? Enhancement()
+            options.geometry.enhance?.faces = true
         case "--optimize": options.optimize = true
         case "--allow-lossy": options.allowLossy = true
         case "--overwrite": options.overwrite = true
@@ -273,6 +292,30 @@ func formats(_ arguments: [String]) -> ExitCode {
     return .ok
 }
 
+/// Installs models from release zips; the name says which model it is.
+func installModels(_ arguments: [String]) async -> ExitCode {
+    guard !arguments.isEmpty else { printError("install-model: give one or more .mlpackage.zip files"); return .usage }
+    for path in arguments {
+        let url = URL(fileURLWithPath: path)
+        let name = url.lastPathComponent.replacingOccurrences(of: ".mlpackage.zip", with: "")
+        guard let model = EnhanceModel(rawValue: name) else {
+            printError("install-model: \(url.lastPathComponent) isn't one of DEX's models")
+            return .failure
+        }
+        // install() deletes the zip it is given, so it gets a copy.
+        let copy = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".zip")
+        do {
+            try FileManager.default.copyItem(at: url, to: copy)
+            try await EnhanceModels.install(model, from: copy)
+            print("installed \(model.title) → \(EnhanceModels.compiledURL(model).path)")
+        } catch {
+            printError("install-model: \(error)")
+            return .failure
+        }
+    }
+    return .ok
+}
+
 // Keep stdout and stderr in order when piped.
 setvbuf(stdout, nil, _IOLBF, 0)
 
@@ -282,6 +325,7 @@ switch arguments.first {
 case "inspect": code = inspect(Array(arguments.dropFirst()))
 case "convert": code = await convert(Array(arguments.dropFirst()))
 case "formats": code = formats(Array(arguments.dropFirst()))
+case "install-model": code = await installModels(Array(arguments.dropFirst()))
 case "help", "--help", "-h": print(usage); code = .ok
 case nil: printError(usage); code = .usage
 case let other?: printError("dex: unknown command '\(other)'\n\n\(usage)"); code = .usage
