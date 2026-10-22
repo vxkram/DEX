@@ -18,11 +18,20 @@ enum Compositor {
         let base = try ImageEngine.geometryApplied(
             to: ImageEngine.decodedFrame(source, index: 0, name: name), plan: basePlan
         )
-        let extras = try composition.extraImages.map { image -> CGImage in
+        var extras = try composition.extraImages.map { image -> CGImage in
             try token.check()
             return try upright(image.url)
         }
         let baseSize = PixelSize(width: base.width, height: base.height)
+        // Layers carry their own crop and Fit.
+        let layers: [OverlayLayer] = switch composition {
+        case .layers(let layers): layers
+        case .canvas(let page): page.layers
+        case .arrangement: []
+        }
+        for (index, layer) in layers.enumerated() where index < extras.count {
+            extras[index] = try edited(extras[index], layer)
+        }
 
         let canvas: PixelSize
         var frames: [PixelRect] = []
@@ -107,6 +116,17 @@ enum Compositor {
         if let size = plan.resize {
             result = try PixelOps.resize(result, to: size)
         }
+        return result
+    }
+
+    /// A layer's own crop, then Fit, on its upright pixels.
+    private static func edited(_ image: CGImage, _ layer: OverlayLayer) throws -> CGImage {
+        var result = image
+        if let crop = layer.crop?.clamped(to: PixelSize(width: image.width, height: image.height)),
+           crop != PixelRect(x: 0, y: 0, width: image.width, height: image.height) {
+            result = try PixelOps.crop(result, crop)
+        }
+        if let frame = layer.frame { result = try PixelOps.frame(result, frame, opaque: false) }
         return result
     }
 

@@ -15,7 +15,9 @@ struct ImageStage: View {
                 Group {
                     // Crop edits the opened photo on its own, even when it
                     // sits on a canvas or among other images.
-                    if isCropping && !document.isFitting {
+                    if isCropping, let layer = document.cropLayer {
+                        layerCropStage(layer, available: available)
+                    } else if isCropping && !document.isFitting {
                         croppingStage(preview, display: display, available: available)
                     } else if document.composition != nil && !isCropping {
                         CompositeStage(document: document, available: available)
@@ -39,6 +41,29 @@ struct ImageStage: View {
             .onAppear { document.prepareLoupe() }
             .onDisappear { document.releaseLoupe() }
             .onChange(of: document.geometry.orientation) { document.prepareLoupe() }
+    }
+
+    /// Crop on an added image: its own crop box, or its Fit result.
+    @ViewBuilder
+    private func layerCropStage(_ layer: OverlayLayer, available: CGSize) -> some View {
+        let display = layer.image.info.displaySize
+        if let extra = document.extraPreviews[layer.image.url] {
+            if document.isFitting {
+                let scale = min(available.width / CGFloat(layer.editedSize.width), available.height / CGFloat(layer.editedSize.height))
+                EditedBase(preview: extra, orientation: .identity, display: display,
+                           crop: layer.crop ?? PixelRect(x: 0, y: 0, width: display.width, height: display.height),
+                           frame: layer.frame, opaque: false, scale: scale)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            } else {
+                let scale = min(available.width / CGFloat(display.width), available.height / CGFloat(display.height))
+                let frame = CGSize(width: CGFloat(display.width) * scale, height: CGFloat(display.height) * scale)
+                OrientedImage(image: extra, orientation: .identity, size: frame)
+                    .overlay { CropOverlay(document: document, display: display, scale: scale) }
+                    .frame(width: frame.width, height: frame.height)
+            }
+        } else {
+            ProgressView()
+        }
     }
 
     private func resultStage(_ preview: PreviewImage, display: PixelSize, available: CGSize) -> some View {
@@ -85,7 +110,7 @@ private struct CropOverlay: View {
     @State private var dragStart: PixelRect?
 
     private var full: PixelRect { PixelRect(x: 0, y: 0, width: display.width, height: display.height) }
-    private var shown: PixelRect { draft ?? document.effectiveCrop ?? full }
+    private var shown: PixelRect { draft ?? document.subjectCrop ?? full }
 
     var body: some View {
         let box = viewRect(shown)
@@ -111,7 +136,7 @@ private struct CropOverlay: View {
                 .offset(x: box.minX, y: box.minY)
                 .gesture(drag(.move))
 
-            ForEach(CropHandle.edges.filter { document.cropAspect.ratio == nil || $0.isCorner }, id: \.self) { handle in
+            ForEach(CropHandle.edges.filter { document.subjectAspect.ratio == nil || $0.isCorner }, id: \.self) { handle in
                 HandleView(isCorner: handle.isCorner)
                     .position(handle.point(in: box))
                     .gesture(drag(handle))
@@ -133,12 +158,13 @@ private struct CropOverlay: View {
                 let dx = Int((value.translation.width / scale).rounded())
                 let dy = Int((value.translation.height / scale).rounded())
                 let rect = CropMath.adjust(start, handle: handle, dx: dx, dy: dy, in: display,
-                                           ratio: document.cropAspect.ratio)
+                                           ratio: document.subjectAspect.ratio)
                 draft = rect
-                if handle != .move { document.cropDrag = CropDrag(handle: handle, rect: rect) }
+                // The loupe reads the opened photo's full-resolution pixels.
+                if handle != .move && document.cropLayer == nil { document.cropDrag = CropDrag(handle: handle, rect: rect) }
             }
             .onEnded { _ in
-                if let draft { document.geometry.crop = draft == full ? nil : draft }
+                if let draft { document.setSubjectCrop(draft == full ? nil : draft) }
                 draft = nil
                 dragStart = nil
                 document.cropDrag = nil
@@ -371,7 +397,12 @@ private struct LayerView: View {
                    update: { change in document.updateLayer(layer.id) { change(&$0.placement) } },
                    guides: { document.centreGuides = $0 }) {
             if let preview = document.extraPreviews[layer.image.url] {
-                Image(decorative: preview.cgImage, scale: 1).resizable().interpolation(.high)
+                // With its own crop and Fit, as it will be exported.
+                let display = layer.image.info.displaySize
+                EditedBase(preview: preview, orientation: .identity, display: display,
+                           crop: layer.crop ?? PixelRect(x: 0, y: 0, width: display.width, height: display.height),
+                           frame: layer.frame, opaque: false,
+                           scale: scale * layer.width / CGFloat(max(layer.editedSize.width, 1)))
             } else {
                 Rectangle().fill(.white.opacity(0.15))
             }

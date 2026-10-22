@@ -7,13 +7,19 @@ struct CropPanel: View {
 
     var body: some View {
         ToolPanelBody(document: document) {
+            if let layer = document.cropLayer {
+                CropSubjectBanner(document: document, name: layer.image.info.fileName)
+            }
+
             VStack(spacing: 10) {
-                PanelSectionHeader("Rotate & flip")
+                PanelSectionHeader(document.cropLayer == nil ? "Rotate & flip" : "Rotate")
                 HStack(spacing: 8) {
-                    IconButton("Rotate left", "rotate.left") { document.rotateCounterclockwise() }
-                    IconButton("Rotate right", "rotate.right") { document.rotateClockwise() }
-                    IconButton("Flip horizontal", "arrow.left.and.right.righttriangle.left.righttriangle.right") { document.flipHorizontally() }
-                    IconButton("Flip vertical", "arrow.up.and.down.righttriangle.up.righttriangle.down") { document.flipVertically() }
+                    IconButton("Rotate left", "rotate.left") { document.rotateSubject(clockwise: false) }
+                    IconButton("Rotate right", "rotate.right") { document.rotateSubject(clockwise: true) }
+                    if document.cropLayer == nil {
+                        IconButton("Flip horizontal", "arrow.left.and.right.righttriangle.left.righttriangle.right") { document.flipHorizontally() }
+                        IconButton("Flip vertical", "arrow.up.and.down.righttriangle.up.righttriangle.down") { document.flipVertically() }
+                    }
                 }
             }
 
@@ -21,12 +27,12 @@ struct CropPanel: View {
                 PanelSectionHeader("Aspect ratio")
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
                     ForEach(CropAspect.allCases) { aspect in
-                        Chip(title: aspect.title, isSelected: document.cropAspect == aspect) {
+                        Chip(title: aspect.title, isSelected: document.subjectAspect == aspect) {
                             document.setCropAspect(aspect)
                         }
                     }
                 }
-                if document.cropAspect.ratio != nil {
+                if document.subjectAspect.ratio != nil {
                     Picker("Mode", selection: Binding(get: { document.isFitting }, set: { document.setFitting($0) })) {
                         Text("Crop").tag(false)
                         Text("Fit").tag(true)
@@ -44,7 +50,7 @@ struct CropPanel: View {
                 FitBackgroundPicker(document: document)
             }
 
-            if document.info?.format == .jpeg && document.target == .jpeg && document.geometry.crop != nil {
+            if document.cropLayer == nil && document.info?.format == .jpeg && document.target == .jpeg && document.geometry.crop != nil {
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Exact pixels", isOn: $document.geometry.exactCrop)
                         .toggleStyle(.switch)
@@ -57,10 +63,9 @@ struct CropPanel: View {
                 }
             }
 
-            if document.hasEdits {
+            if document.subjectHasEdits {
                 Button(document.isFitting ? "Reset fit & rotation" : "Reset crop & rotation", systemImage: "arrow.counterclockwise") {
-                    document.resetGeometry()
-                    document.cropAspect = .free
+                    document.resetSubject()
                 }
                 .buttonStyle(.link)
                 .tint(Theme.ember)
@@ -69,12 +74,42 @@ struct CropPanel: View {
     }
 }
 
+/// Says which image Crop is working on when it isn't the opened photo.
+private struct CropSubjectBanner: View {
+    let document: ImageDocument
+    let name: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label {
+                Text(verbatim: "Cropping \(name)").lineLimit(1).truncationMode(.middle)
+            } icon: {
+                Image(systemName: "scope")
+            }
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(Theme.ember)
+            Text("The image selected in Compose. Its place on the page stays the same.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let info = document.info {
+                Button("Crop \(info.fileName) instead") { document.selectBase() }
+                    .buttonStyle(.link)
+                    .tint(Theme.ember)
+                    .font(.caption.weight(.semibold))
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.ember.opacity(0.12)))
+    }
+}
+
 /// What fills the space Fit adds around the picture.
 private struct FitBackgroundPicker: View {
     let document: ImageDocument
 
     var body: some View {
-        let current = document.geometry.frame?.background
+        let current = document.subjectFrame?.background
         VStack(alignment: .leading, spacing: 8) {
             PanelSectionHeader("Background")
             HStack(spacing: 6) {
@@ -95,7 +130,7 @@ private struct FitBackgroundPicker: View {
     private var customColor: Binding<Color> {
         Binding(
             get: {
-                if case .color(let r, let g, let b) = document.geometry.frame?.background { return Color(red: r, green: g, blue: b) }
+                if case .color(let r, let g, let b) = document.subjectFrame?.background { return Color(red: r, green: g, blue: b) }
                 return .white
             },
             set: { color in

@@ -155,40 +155,107 @@ final class ImageDocument {
         return geometry.frame.map { $0.canvas(for: croppedSize).canvas } ?? croppedSize
     }
 
-    var isFitting: Bool { geometry.frame != nil }
+    // MARK: Crop subject
+
+    /// The added image the Crop tool works on: the one selected in Compose.
+    /// nil means the opened photo.
+    var cropLayer: OverlayLayer? {
+        guard composeMode.isLayered, !isBaseSelected, let id = selectedLayerID else { return nil }
+        return layers.first { $0.id == id }
+    }
+
+    /// Each added image remembers its own ratio choice.
+    var layerAspects: [UUID: CropAspect] = [:]
+
+    /// Upright size of what Crop works on.
+    var subjectDisplaySize: PixelSize? { cropLayer?.image.info.displaySize ?? displaySize }
+
+    var subjectCrop: PixelRect? { cropLayer.map { $0.crop } ?? effectiveCrop }
+
+    var subjectFrame: Framing? { cropLayer.map { $0.frame } ?? geometry.frame }
+
+    var subjectAspect: CropAspect { cropLayer.map { layerAspects[$0.id] ?? .free } ?? cropAspect }
+
+    var isFitting: Bool { subjectFrame != nil }
+
+    var subjectHasEdits: Bool {
+        cropLayer.map { $0.crop != nil || $0.frame != nil } ?? hasEdits
+    }
+
+    func setSubjectCrop(_ rect: PixelRect?) {
+        if let layer = cropLayer { editLayer(layer.id) { $0.crop = rect } } else { geometry.crop = rect }
+    }
+
+    private func setSubjectFrame(_ frame: Framing?) {
+        if let layer = cropLayer { editLayer(layer.id) { $0.frame = frame } } else { geometry.frame = frame }
+    }
+
+    /// Changes a layer's crop or Fit while keeping its pixels at the same
+    /// size on the canvas, so the picture doesn't jump.
+    private func editLayer(_ id: UUID, _ change: (inout OverlayLayer) -> Void) {
+        updateLayer(id) { layer in
+            let old = layer.editedSize
+            change(&layer)
+            layer.width = max((layer.width * Double(layer.editedSize.width) / Double(max(old.width, 1))).rounded(), 1)
+        }
+    }
 
     /// Chooses a ratio: a centred crop of it, or in Fit, a canvas of it.
     func setCropAspect(_ aspect: CropAspect) {
-        cropAspect = aspect
-        geometry.resize = nil
+        if let layer = cropLayer { layerAspects[layer.id] = aspect } else { cropAspect = aspect; geometry.resize = nil }
         guard let ratio = aspect.ratio else {
-            geometry.frame = nil
+            setSubjectFrame(nil)
             return
         }
         if isFitting {
-            geometry.frame = Framing(ratio: ratio, background: fitBackground)
-        } else if let display = displaySize {
-            geometry.crop = CropMath.centred(ratio: ratio, in: display)
+            setSubjectFrame(Framing(ratio: ratio, background: fitBackground))
+        } else if let display = subjectDisplaySize {
+            setSubjectCrop(CropMath.centred(ratio: ratio, in: display))
         }
     }
 
     /// Crop cuts the picture to the ratio; Fit keeps all of it and adds
     /// background around it.
     func setFitting(_ fit: Bool) {
-        guard let ratio = cropAspect.ratio, fit != isFitting else { return }
-        geometry.resize = nil
+        guard let ratio = subjectAspect.ratio, fit != isFitting else { return }
+        if cropLayer == nil { geometry.resize = nil }
         if fit {
-            geometry.crop = nil
-            geometry.frame = Framing(ratio: ratio, background: fitBackground)
+            setSubjectCrop(nil)
+            setSubjectFrame(Framing(ratio: ratio, background: fitBackground))
         } else {
-            geometry.frame = nil
-            if let display = displaySize { geometry.crop = CropMath.centred(ratio: ratio, in: display) }
+            setSubjectFrame(nil)
+            if let display = subjectDisplaySize { setSubjectCrop(CropMath.centred(ratio: ratio, in: display)) }
         }
     }
 
     func setFitBackground(_ background: Framing.Background) {
         fitBackground = background
-        geometry.frame?.background = background
+        if var frame = subjectFrame {
+            frame.background = background
+            setSubjectFrame(frame)
+        }
+    }
+
+    /// Undoes the crop, Fit and rotation of whatever Crop is working on.
+    func resetSubject() {
+        if let layer = cropLayer {
+            layerAspects[layer.id] = nil
+            editLayer(layer.id) { $0.crop = nil; $0.frame = nil; $0.rotation = 0 }
+        } else {
+            resetGeometry()
+            cropAspect = .free
+        }
+    }
+
+    /// Rotates whatever Crop is working on; added images turn on the canvas.
+    func rotateSubject(clockwise: Bool) {
+        if let layer = cropLayer {
+            updateLayer(layer.id) { $0.rotation = (($0.rotation + (clockwise ? 90 : -90) + 540).truncatingRemainder(dividingBy: 360)) - 180 }
+        } else if clockwise {
+            rotateClockwise()
+        } else {
+            rotateCounterclockwise()
+        }
     }
 
     var hasEdits: Bool { !geometry.isIdentity }
@@ -393,6 +460,7 @@ final class ImageDocument {
         composeMode = .layers
         canvasBasePosition = 0
         isBaseSelected = false
+        layerAspects = [:]
     }
 
     func rotateClockwise() { geometry.rotateClockwise(); geometry.resize = nil }

@@ -36,7 +36,7 @@ struct ComposePanel: View {
                     LayerControls(title: "Selected: \(info.fileName)", placement: document.basePlacement, native: base,
                                   canvas: canvas) { change in document.updateBase(change) }
                 } else if let id = document.selectedLayerID, let layer = document.layers.first(where: { $0.id == id }) {
-                    LayerControls(title: "Selected layer", placement: layer.placement, native: layer.image.info.displaySize,
+                    LayerControls(title: "Selected layer", placement: layer.placement, native: layer.editedSize,
                                   canvas: canvas) { change in document.updateLayer(id) { change(&$0.placement) } }
                 }
                 if document.composeMode == .canvas {

@@ -172,4 +172,21 @@ struct CompositorTests {
         let (above, _) = try await run(base, ConvertRequest(target: .png, composition: .canvas(page)))
         #expect(close(try color(above, x: 50, y: 50), (255, 0, 0)))
     }
+
+    @Test func layerKeepsItsOwnCrop() async throws {
+        defer { fixtures.cleanUp() }
+        let base = try await solid(.png, "base", 200, 200, (1, 1, 1))
+        // The crop keeps the right half: a square.
+        let halves = try await solid(.png, "halves", 100, 50, (0, 0, 1))
+        var layer = OverlayLayer(image: try composed(halves), centerX: 100, centerY: 100, width: 50)
+        layer.crop = PixelRect(x: 50, y: 0, width: 50, height: 50)
+        #expect(layer.editedSize == PixelSize(width: 50, height: 50))
+        #expect(!layer.isResampled)
+        let page = Canvas(size: PixelSize(width: 200, height: 200), base: LayerPlacement(centerX: 100, centerY: 100, width: 200),
+                          layers: [layer])
+        let (output, plan) = try await run(base, ConvertRequest(target: .png, composition: .canvas(page)))
+        #expect(!plan.notes.contains { if case .imageResampled = $0 { true } else { false } })
+        #expect(close(try color(output, x: 100, y: 100), (0, 0, 255)))
+        #expect(close(try color(output, x: 100, y: 70), (255, 255, 255)), "a 50 × 50 square, not the 100 × 50 original")
+    }
 }

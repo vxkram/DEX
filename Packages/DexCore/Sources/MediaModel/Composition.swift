@@ -68,6 +68,10 @@ public struct OverlayLayer: Codable, Sendable, Equatable, Identifiable {
     public var id: UUID
     public var image: ComposedImage
     public var placement: LayerPlacement
+    /// The layer's own crop, in its upright pixels.
+    public var crop: PixelRect?
+    /// The layer's own Fit, after its crop.
+    public var frame: Framing?
 
     public init(id: UUID = UUID(), image: ComposedImage, centerX: Double, centerY: Double,
                 width: Double, rotation: Double = 0, opacity: Double = 1) {
@@ -82,6 +86,16 @@ public struct OverlayLayer: Codable, Sendable, Equatable, Identifiable {
         self.placement = placement
     }
 
+    /// Size after the layer's own crop.
+    public var croppedSize: PixelSize {
+        crop?.clamped(to: image.info.displaySize)?.size ?? image.info.displaySize
+    }
+
+    /// Size after the layer's own crop and Fit: what is placed on the canvas.
+    public var editedSize: PixelSize {
+        frame.map { $0.canvas(for: croppedSize).canvas } ?? croppedSize
+    }
+
     /// `layer.centerX` and friends read and write the placement.
     public subscript<T>(dynamicMember path: WritableKeyPath<LayerPlacement, T>) -> T {
         get { placement[keyPath: path] }
@@ -89,14 +103,14 @@ public struct OverlayLayer: Codable, Sendable, Equatable, Identifiable {
     }
 
     public var aspectRatio: Double {
-        let size = image.info.displaySize
+        let size = editedSize
         return Double(size.width) / Double(max(size.height, 1))
     }
 
     public var height: Double { placement.width / aspectRatio }
 
     /// Whether the layer is drawn at a size other than its own pixels.
-    public var isResampled: Bool { placement.isResampled(native: image.info.displaySize) }
+    public var isResampled: Bool { placement.isResampled(native: editedSize) }
 
     /// A layer that fits inside `canvas` at up to `fraction` of its width,
     /// centred, never enlarged beyond its own pixels.
