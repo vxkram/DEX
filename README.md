@@ -10,10 +10,9 @@
 
 | Tool | What you can do |
 |---|---|
-| **Convert** | JPEG, PNG, HEIC, WebP, AVIF, TIFF, GIF, in any direction. HDR photos stay HDR where the format allows. Location data is removed by default |
-| **Crop** | Crop, rotate and flip, with aspect presets and a pixel-level zoom while you drag. JPEG crops are lossless |
-| **Compress** | Lossless or smaller-file compression, smaller dimensions (4K / web / social), and the real resulting size shown before you save |
-| **Compose** | Put images on top of each other (logos, watermarks) or join them side by side, stacked or in a grid, in any mix of formats |
+| **Convert** | JPEG, PNG, HEIC, WebP, AVIF, TIFF, GIF or PDF, in any direction. HDR photos stay HDR where the format allows. Location data is removed by default. **Advanced** has the quality slider, lossless repacking and smaller dimensions (4K / web), with the real resulting size shown before you save |
+| **Crop** | Crop, rotate and flip to Free, 1:1, 3:4, 4:3, 16:9 or 9:16, with a pixel-level zoom while you drag. JPEG crops are lossless. **Fit** keeps the whole picture and fills the space around it with white, black, a colour, transparency or a blur, without touching the photo's own pixels |
+| **Compose** | Put images on top of each other (logos, watermarks), join them side by side, stacked or in a grid, or place them freely on a **Canvas** of any size (Story, A4, Letter…), in any mix of formats |
 | **PDF** | Make PDFs from images; turn PDF pages into images; rearrange, rotate, delete, extract, merge, split, add text or images to, and compress PDFs |
 | **Audio** | Trim on a zoomable waveform, play it back, and save as WAV, AIFF, FLAC, ALAC, AAC or MP3. Trimming an MP3, AAC or ALAC doesn't re-encode it, and is still exact to the sample. Show and change the cover art, title and artist. Paste a YouTube link and choose on the next page: audio (AAC exactly as streamed, MP3, FLAC, ALAC, WAV, AIFF) or **video** in any quality up to 4K/8K, saved as MP4 without re-encoding |
 
@@ -53,7 +52,7 @@ You can also right-click images in Finder: **Services → DEX ▸ Convert to JPE
 
 ## Using it
 1. **Drop an image, a PDF or an audio file** onto the window (or click **Choose File…**).
-2. Pick a tool from the dock at the bottom: **Convert, Crop, Compress, Compose, PDF, Info** for images, or **Trim, Convert, Info** for audio (shortcuts ⌘1–⌘6).
+2. Pick a tool from the dock at the bottom: **Convert, Crop, Compose, PDF, Info** for images (shortcuts ⌘1–⌘5), or **Trim, Convert, Info** for audio. The house button (⇧⌘H) takes you back to the start.
    For audio: Space plays, I and O set the trim at the playhead, and ⌘+ / ⌘− zoom (or pinch, or ⌥-scroll).
    To get audio or video from YouTube, paste the link on the start screen or choose **File ▸ Download from Link…** (⇧⌘O), press **Continue**, choose **Audio** or **Video**, pick a format or quality and **Download**. It's saved to Downloads.
 3. Check the **Result** in the panel. It shows the format, the size of the file you'll get, and whether anything is lost. If a file will be bigger than the original, tap **Why?** to see the reason.
