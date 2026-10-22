@@ -42,8 +42,9 @@ export default defineContentScript({
             <svg viewBox="0 0 24 24"><path d="M12 3v12 M7 10l5 5 5-5 M4 20h16"/></svg>Save frame
           </button>
           <button data-action="edit" title="Open this frame in DEX to crop or convert">Edit</button>
-          <span class="size">${video.videoWidth} × ${video.videoHeight}</span>
+          <span class="size"></span>
         </div>`;
+      root.querySelector('.size')!.textContent = `${video.videoWidth} × ${video.videoHeight}`;
       // Clicks on the bar mustn't reach the player (which would play/pause).
       for (const type of ['click', 'mousedown', 'mouseup', 'pointerdown', 'dblclick']) {
         root.addEventListener(type, (e) => e.stopPropagation());
