@@ -4,7 +4,7 @@ import SwiftUI
 /// Actions in the dock. Only available ones can be opened; the rest show
 /// where the app is going and light up as they are built.
 enum Tool: String, CaseIterable, Identifiable {
-    case convert, crop, compress, compose, pdf, info
+    case convert, crop, compose, pdf, info
 
     var id: Self { self }
 
@@ -12,7 +12,6 @@ enum Tool: String, CaseIterable, Identifiable {
         switch self {
         case .convert: "Convert"
         case .crop: "Crop"
-        case .compress: "Compress"
         case .compose: "Compose"
         case .pdf: "PDF"
         case .info: "Info"
@@ -23,7 +22,6 @@ enum Tool: String, CaseIterable, Identifiable {
         switch self {
         case .convert: "arrow.triangle.2.circlepath"
         case .crop: "crop"
-        case .compress: "arrow.down.right.and.arrow.up.left"
         case .compose: "square.on.square"
         case .pdf: "doc.richtext"
         case .info: "info.circle"
@@ -226,7 +224,7 @@ private struct ActionDock: View {
         }
         .padding(6)
         .background {
-            // ⌘1…⌘7 always open a tool; clicking the open one closes it.
+            // ⌘1…⌘5 always open a tool; clicking the open one closes it.
             ForEach(Array(Tool.allCases.enumerated()), id: \.element) { index, tool in
                 Button(tool.title) { selection = tool }
                     .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
@@ -293,7 +291,6 @@ private struct ToolPanel: View {
             switch tool {
             case .convert: ConvertPanel(document: document)
             case .crop: CropPanel(document: document)
-            case .compress: CompressPanel(document: document)
             case .compose: ComposePanel(document: document)
             case .pdf: PDFPanel(document: document)
             default: InfoPanel(document: document)

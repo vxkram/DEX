@@ -28,13 +28,11 @@ struct ConvertPanel: View {
                         .controlSize(.large)
                     }
 
-                    if document.target.hasLossyMode {
-                        DisclosureGroup("Advanced", isExpanded: $showsAdvanced) {
-                            QualityControl(quality: $document.quality, target: document.target)
-                                .padding(.top, 10)
-                        }
-                        .font(.callout)
+                    DisclosureGroup("Advanced", isExpanded: $showsAdvanced) {
+                        AdvancedSettings(document: document)
+                            .padding(.top, 10)
                     }
+                    .font(.callout)
 
                     ResultSection(document: document)
                 }
@@ -82,6 +80,31 @@ private struct FormatGrid: View {
     }
 }
 
+// MARK: - Advanced
+
+/// Quality, lossless repacking and smaller dimensions: everything that
+/// trades size, kept out of the way until asked for.
+private struct AdvancedSettings: View {
+    @Bindable var document: ImageDocument
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if document.target.hasLossyMode {
+                QualityControl(quality: $document.quality, target: document.target)
+            }
+            if document.info?.format == document.target && document.target.canOptimizeLosslessly {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle("Smaller without loss", isOn: $document.optimize)
+                        .toggleStyle(.switch)
+                        .tint(Theme.ember)
+                    Explanation("Repacks the \(document.target.displayName) data more tightly. Every pixel stays identical.")
+                }
+            }
+            DimensionsSection(document: document)
+        }
+    }
+}
+
 // MARK: - Quality
 
 private struct QualityControl: View {
@@ -112,5 +135,103 @@ private struct QualityControl: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+// MARK: - Dimensions
+
+/// Fewer pixels: the biggest size saving there is. Always proportional
+/// (nothing can be stretched) and never larger than the original.
+private struct DimensionsSection: View {
+    @Bindable var document: ImageDocument
+    @State private var isOn = false
+
+    private enum Choice: Hashable {
+        case original
+        case percent(Int)
+        case longEdge(Int)
+    }
+
+    var body: some View {
+        if let base = document.framedSize {
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle("Change dimensions", isOn: Binding(
+                    get: { isOn || document.geometry.resize != nil },
+                    set: { on in
+                        isOn = on
+                        if !on { document.geometry.resize = nil }
+                    }
+                ))
+                .toggleStyle(.switch)
+                .tint(Theme.ember)
+
+                if isOn || document.geometry.resize != nil {
+                    Explanation("Fewer pixels make a much smaller file. The proportions stay the same, and it never gets bigger than the original.")
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
+                        ForEach(options(for: base), id: \.choice) { option in
+                            let size = size(for: option.choice, base: base)
+                            DimensionChip(title: option.title, detail: "\(size.width) × \(size.height)",
+                                          isSelected: (document.geometry.resize ?? base) == size) {
+                                document.geometry.resize = option.choice == .original ? nil : size
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private typealias Option = (choice: Choice, title: String)
+
+    private func options(for base: PixelSize) -> [Option] {
+        let longest = max(base.width, base.height)
+        var options: [Option] = [(.original, "Original")]
+        for percent in [75, 50, 25] {
+            options.append((.percent(percent), "\(percent)%"))
+        }
+        for (edge, use) in [(3840, "4K"), (2048, "Web")] where edge < longest {
+            options.append((.longEdge(edge), "\(edge) · \(use)"))
+        }
+        return options
+    }
+
+    private func size(for choice: Choice, base: PixelSize) -> PixelSize {
+        switch choice {
+        case .original: base
+        case .percent(let percent): scaled(base, Double(percent) / 100)
+        case .longEdge(let edge): scaled(base, Double(edge) / Double(max(base.width, base.height)))
+        }
+    }
+
+    /// Same factor on both sides: the aspect ratio can't change.
+    private func scaled(_ base: PixelSize, _ factor: Double) -> PixelSize {
+        PixelSize(width: max(Int((Double(base.width) * factor).rounded()), 1),
+                  height: max(Int((Double(base.height) * factor).rounded()), 1))
+    }
+}
+
+private struct DimensionChip: View {
+    let title: String
+    let detail: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 1) {
+                Text(title).font(.system(.caption, design: .monospaced, weight: .semibold))
+                Text(verbatim: detail).font(.caption2)
+                    .foregroundStyle(isSelected ? .white.opacity(0.85) : .secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 38)
+            .foregroundStyle(isSelected ? .white : .primary)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(isSelected ? Theme.ember : .white.opacity(0.07)))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(.white.opacity(isSelected ? 0 : 0.08)))
+            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

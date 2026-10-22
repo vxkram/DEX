@@ -208,8 +208,7 @@ struct EstimateLine: View {
                          : "\(Int((change.magnitude * 100).rounded()))% \(change < 0 ? "smaller" : "larger")")
                         .font(.technicalSmall)
                         .foregroundStyle(change > 0.005 ? .orange : change < -0.005 ? .green : .secondary)
-                    // Compress explains at the top of its panel instead.
-                    if document.tool != .compress, let reason = SizeIncreaseReason(document: document) {
+                    if let reason = SizeIncreaseReason(document: document) {
                         WhyButton(reason: reason, document: document)
                     }
                 }
@@ -240,22 +239,6 @@ struct Explanation: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-/// When the result is bigger than the original: a compact "Why?" that
-/// opens the plain-words reason and the one-click fix, if there is one.
-struct SizeIncreaseNote: View {
-    let document: ImageDocument
-
-    var body: some View {
-        if let reason = SizeIncreaseReason(document: document) {
-            HStack(spacing: 6) {
-                Image(systemName: "arrow.up.right.circle.fill").foregroundStyle(.orange)
-                Text(verbatim: "\(reason.percent)% larger").font(.technicalSmall).foregroundStyle(.orange)
-                WhyButton(reason: reason, document: document)
-            }
-        }
     }
 }
 
