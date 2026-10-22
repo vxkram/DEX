@@ -9,8 +9,9 @@ struct ComposePanel: View {
 
     var body: some View {
         ToolPanelBody(document: document) {
+            // Clicking it again leaves Canvas, back to images on top.
             CanvasButton(isSelected: document.composeMode == .canvas) {
-                document.setComposeMode(.canvas)
+                document.setComposeMode(document.composeMode == .canvas ? .layers : .canvas)
             }
 
             VStack(spacing: 10) {
@@ -106,6 +107,7 @@ private struct CanvasButton: View {
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
+        .help(isSelected ? "Click to leave Canvas" : "Design on a page")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
