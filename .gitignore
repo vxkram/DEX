@@ -6,7 +6,7 @@
 .swiftpm/
 Package.resolved.orig
 
-# Xcode (mac/DEX.xcodeproj is generated from mac/project.yml)
+# Xcode (DEX.xcodeproj is generated from project.yml)
 DEX.xcodeproj/
 xcuserdata/
 DerivedData/
@@ -14,18 +14,16 @@ DerivedData/
 *.xcscmblueprint
 
 # Build products and local artifacts
-/mac/build/
+/build/
 *.dmg
 *.xcarchive
-
-# Windows app: see windows/.gitignore and windows/src-tauri/.gitignore
 
 # Editors
 .vscode/
 .idea/
 
-# Original design source images (large); app uses compressed copies in mac/App/Resources
-/mac/bg/
+# Original design source images (large); app uses compressed copies in App/Resources
+bg/
 
 # Personal notes, kept out of the repo
 docs/my_idea.md

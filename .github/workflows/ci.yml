@@ -6,14 +6,11 @@ on:
   pull_request:
 
 jobs:
-  mac:
+  test:
     # The package targets macOS 26, so it needs a macOS 26 runner and SDK.
     runs-on: macos-26
     # A hang (e.g. an ImageIO encoder deadlock) should fail fast.
     timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: mac
     steps:
       - uses: actions/checkout@v4
       - name: Toolchain
@@ -22,31 +19,3 @@ jobs:
         run: make test
       - name: Supported formats
         run: make formats
-
-  windows:
-    runs-on: windows-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: windows
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: windows/package-lock.json
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: windows/src-tauri
-      - name: Install
-        run: npm ci
-      - name: Test
-        run: cargo test --manifest-path src-tauri/Cargo.toml
-      - name: Build installer
-        run: npm run tauri build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: DEX-windows
-          path: windows/src-tauri/target/release/bundle/nsis/*.exe

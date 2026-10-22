@@ -2,7 +2,7 @@
 
 # DEX
 
-**Take any image or sound and quickly turn it into what you need.** DEX is a small, native Mac app (a Windows version is being built in [`windows/`](windows/)) for converting, cropping, compressing and combining images, working with PDFs, and trimming and converting audio. It keeps quality whenever that's possible and tells you plainly when it isn't.
+**Take any image or sound and quickly turn it into what you need.** DEX is a small, native Mac app for converting, cropping, compressing and combining images, working with PDFs, and trimming and converting audio. It keeps quality whenever that's possible and tells you plainly when it isn't.
 
 <p align="center"><img src="design/screenshot.jpg" width="800" alt="DEX with an image open and the Convert panel showing a lossless result"></p>
 
@@ -46,10 +46,10 @@ You can also right-click images in Finder: **Services → DEX ▸ Convert to JPE
 3. Get the code and build:
    ```sh
    git clone https://github.com/vxkram/DEX.git
-   cd DEX/mac
+   cd DEX
    make package
    ```
-4. The app is in **mac/build/DEX.zip**. Unzip it and move DEX.app to Applications.
+4. The app is in **build/DEX.zip**. Unzip it and move DEX.app to Applications.
 
 ## Using it
 1. **Drop an image, a PDF or an audio file** onto the window (or click **Choose File…**).

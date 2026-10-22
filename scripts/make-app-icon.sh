@@ -3,12 +3,10 @@
 # Usage: scripts/make-app-icon.sh [path/to/icon-1024.png]   (default: design/AppIcon-1024.png)
 set -eu
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-# The icon master is shared with the Windows app, at the repo root.
-MASTER="$ROOT/../design/AppIcon-1024.png"
-SOURCE=${1:-"$MASTER"}
+SOURCE=${1:-"$ROOT/design/AppIcon-1024.png"}
 SET="$ROOT/App/Assets.xcassets/AppIcon.appiconset"
 mkdir -p "$SET"
-[ "$SOURCE" = "$MASTER" ] || cp "$SOURCE" "$MASTER"
+[ "$SOURCE" = "$ROOT/design/AppIcon-1024.png" ] || cp "$SOURCE" "$ROOT/design/AppIcon-1024.png"
 
 images=""
 for size in 16 32 128 256 512; do
