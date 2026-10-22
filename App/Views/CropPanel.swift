@@ -1,7 +1,7 @@
 import MediaModel
 import SwiftUI
 
-/// Rotate/flip, aspect presets and exact crop numbers.
+/// Rotate/flip and aspect presets, cropped or fitted.
 struct CropPanel: View {
     @Bindable var document: ImageDocument
 
@@ -17,30 +17,31 @@ struct CropPanel: View {
                 }
             }
 
-            if let display = document.displaySize {
-                VStack(spacing: 10) {
-                    PanelSectionHeader("Aspect ratio")
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
-                        ForEach(CropAspect.allCases) { aspect in
-                            Chip(title: aspect.title, isSelected: document.cropAspect == aspect) {
-                                document.cropAspect = aspect
-                                if let ratio = aspect.ratio(for: display) {
-                                    document.geometry.crop = CropMath.centred(ratio: ratio, in: display)
-                                }
-                            }
+            VStack(spacing: 10) {
+                PanelSectionHeader("Aspect ratio")
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                    ForEach(CropAspect.allCases) { aspect in
+                        Chip(title: aspect.title, isSelected: document.cropAspect == aspect) {
+                            document.setCropAspect(aspect)
                         }
                     }
                 }
-
-                VStack(spacing: 10) {
-                    PanelSectionHeader("Crop (pixels)")
-                    CropFields(document: document, display: display)
-                    Text("W × H is the size of the crop. X and Y are how far its top-left corner is from the photo's left and top edges.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
+                if document.cropAspect.ratio != nil {
+                    Picker("Mode", selection: Binding(get: { document.isFitting }, set: { document.setFitting($0) })) {
+                        Text("Crop").tag(false)
+                        Text("Fit").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .controlSize(.large)
+                    Explanation(document.isFitting
+                                ? "Keeps the whole picture and adds space around it to make the shape. The photo's own pixels aren't touched."
+                                : "Cuts the picture to the shape. Drag the box to choose what stays.")
                 }
+            }
+
+            if document.isFitting {
+                FitBackgroundPicker(document: document)
             }
 
             if document.info?.format == .jpeg && document.target == .jpeg && document.geometry.crop != nil {
@@ -57,7 +58,7 @@ struct CropPanel: View {
             }
 
             if document.hasEdits {
-                Button("Reset crop & rotation", systemImage: "arrow.counterclockwise") {
+                Button(document.isFitting ? "Reset fit & rotation" : "Reset crop & rotation", systemImage: "arrow.counterclockwise") {
                     document.resetGeometry()
                     document.cropAspect = .free
                 }
@@ -68,32 +69,40 @@ struct CropPanel: View {
     }
 }
 
-private struct CropFields: View {
-    @Bindable var document: ImageDocument
-    let display: PixelSize
+/// What fills the space Fit adds around the picture.
+private struct FitBackgroundPicker: View {
+    let document: ImageDocument
 
     var body: some View {
-        let crop = document.effectiveCrop ?? PixelRect(x: 0, y: 0, width: display.width, height: display.height)
-        Grid(horizontalSpacing: 10, verticalSpacing: 8) {
-            GridRow {
-                NumberField(label: "W", value: crop.width) { set(crop, width: $0) }
-                NumberField(label: "H", value: crop.height) { set(crop, height: $0) }
+        let current = document.geometry.frame?.background
+        VStack(alignment: .leading, spacing: 8) {
+            PanelSectionHeader("Background")
+            HStack(spacing: 6) {
+                Chip(title: "Blur", isSelected: current == .blur) { document.setFitBackground(.blur) }
+                Chip(title: "White", isSelected: current == .white) { document.setFitBackground(.white) }
+                Chip(title: "Black", isSelected: current == .black) { document.setFitBackground(.black) }
+                Chip(title: "None", isSelected: current == .transparent) { document.setFitBackground(.transparent) }
+                ColorPicker("Custom colour", selection: customColor, supportsOpacity: false)
+                    .labelsHidden()
+                    .help("Custom colour")
             }
-            GridRow {
-                NumberField(label: "X", value: crop.x) { set(crop, x: $0) }
-                NumberField(label: "Y", value: crop.y) { set(crop, y: $0) }
+            if current == .transparent && !document.target.supportsAlpha {
+                Explanation("\(document.target.displayName) can't be transparent, so the space will be white. PNG, WebP, HEIC and TIFF keep it.")
             }
         }
     }
 
-    private func set(_ crop: PixelRect, x: Int? = nil, y: Int? = nil, width: Int? = nil, height: Int? = nil) {
-        var rect = crop
-        rect.x = x ?? rect.x
-        rect.y = y ?? rect.y
-        rect.width = max(width ?? rect.width, CropMath.minimumSide)
-        rect.height = max(height ?? rect.height, CropMath.minimumSide)
-        document.cropAspect = .free
-        document.geometry.crop = rect.clamped(to: display)
+    private var customColor: Binding<Color> {
+        Binding(
+            get: {
+                if case .color(let r, let g, let b) = document.geometry.frame?.background { return Color(red: r, green: g, blue: b) }
+                return .white
+            },
+            set: { color in
+                let resolved = NSColor(color).usingColorSpace(.sRGB) ?? .white
+                document.setFitBackground(.color(red: resolved.redComponent, green: resolved.greenComponent, blue: resolved.blueComponent))
+            }
+        )
     }
 }
 

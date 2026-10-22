@@ -26,6 +26,10 @@ struct DEXApp: App {
                     .keyboardShortcut("o")
                 Button("Download from Link…") { document.linkDownload.isShowingSheet = true }
                     .keyboardShortcut("o", modifiers: [.command, .shift])
+                Divider()
+                Button("Home") { document.goHome() }
+                    .keyboardShortcut("h", modifiers: [.command, .shift])
+                    .disabled(document.sourceURL == nil)
             }
             CommandGroup(replacing: .saveItem) {
                 Button("Export…") { document.export() }

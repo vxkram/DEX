@@ -56,13 +56,17 @@ public enum Planner {
         let fullFrame = PixelRect(x: 0, y: 0, width: displaySize.width, height: displaySize.height)
         let crop = geometry.crop?.clamped(to: displaySize).flatMap { $0 == fullFrame ? nil : $0 }
         let croppedSize = crop?.size ?? displaySize
-        let resize = geometry.resize.flatMap { $0 == croppedSize || $0.width < 1 || $0.height < 1 ? nil : $0 }
-        let changesPixels = crop != nil || resize != nil
+        // A frame that wouldn't add anything (the picture already has its
+        // shape) is no frame.
+        let frame = geometry.frame.flatMap { $0.canvas(for: croppedSize).canvas == croppedSize ? nil : $0 }
+        let framedSize = frame?.canvas(for: croppedSize).canvas ?? croppedSize
+        let resize = geometry.resize.flatMap { $0 == framedSize || $0.width < 1 || $0.height < 1 ? nil : $0 }
+        let changesPixels = crop != nil || frame != nil || resize != nil
 
         if let composition = request.composition, !composition.isEmpty {
             return compositePlan(
                 source, sourceFormat: sourceFormat, request: request, composition: composition,
-                orientation: total, crop: crop, croppedSize: croppedSize, resize: resize
+                orientation: total, crop: crop, frame: frame, baseSize: framedSize, resize: resize
             )
         }
 
@@ -103,7 +107,7 @@ public enum Planner {
 
         // 2. JPEG crop and/or optimisation on the compressed data: no
         //    decode, no loss.
-        if strategy == .reencode, sourceFormat == .jpeg, target == .jpeg, resize == nil, !wantsLossy,
+        if strategy == .reencode, sourceFormat == .jpeg, target == .jpeg, resize == nil, frame == nil, !wantsLossy,
            (crop != nil && !geometry.exactCrop) || (crop == nil && (optimizes || request.metadata == .removeAll)),
            let block = source.jpegBlockSize {
             strategy = .losslessJPEGTransform
@@ -128,13 +132,14 @@ public enum Planner {
         if strategy == .reencode {
             let formatCantRotate = !total.isIdentity && !target.supportsOrientationTag
             if changesPixels || formatCantRotate {
-                // Work upright: bake the orientation, then crop and resize.
+                // Work upright: bake the orientation, then crop, frame and resize.
                 bakedOrientation = total.exif
                 outputOrientation = 1
                 pixelCrop = crop
-                outputSize = resize ?? croppedSize
+                outputSize = resize ?? framedSize
                 if formatCantRotate && !changesPixels { info.append(.orientationApplied) }
-                if let resize { losses.append(.resampled(from: croppedSize, to: resize)) }
+                if let frame { info.append(.framed(to: framedSize, background: frame.background)) }
+                if let resize { losses.append(.resampled(from: framedSize, to: resize)) }
             } else {
                 outputOrientation = total.exif
             }
@@ -148,7 +153,7 @@ public enum Planner {
             if target == .gif && sourceFormat != .gif {
                 losses.append(.paletteLimited)
             }
-            if source.hasAlpha && !target.supportsAlpha {
+            if (source.hasAlpha || frame?.background == .transparent) && !target.supportsAlpha {
                 losses.append(.transparencyFlattened)
             }
             if source.isAnimated && !target.supportsAnimation {
@@ -163,6 +168,9 @@ public enum Planner {
             }
             if source.hasHDRGainMap && !target.supportsGainMap {
                 losses.append(.hdrDropped(to: target))
+            } else if source.hasHDRGainMap && frame != nil {
+                preservesHDR = false
+                losses.append(.hdrNotKeptByFit)
             }
             if losses.isEmpty && !sourceFormat.supportsLossless && target.supportsLossless {
                 losses.append(.noAdditionalLoss)
@@ -185,6 +193,7 @@ public enum Planner {
             bakedOrientation: bakedOrientation,
             outputOrientation: outputOrientation,
             pixelCrop: pixelCrop,
+            frame: strategy == .reencode ? frame : nil,
             resize: resize,
             displayCrop: displayCrop,
             expectedWidth: outputSize.width,
@@ -197,11 +206,11 @@ public enum Planner {
     /// with every scaled input and lost property disclosed.
     private static func compositePlan(
         _ source: MediaInfo, sourceFormat: ImageFormat, request: ConvertRequest, composition: Composition,
-        orientation: Orientation, crop: PixelRect?, croppedSize: PixelSize, resize: PixelSize?
+        orientation: Orientation, crop: PixelRect?, frame: Framing?, baseSize croppedSize: PixelSize, resize: PixelSize?
     ) -> ConversionPlan {
         let target = request.target
         var losses: [QualityNote] = []
-        var hasTransparency = source.hasAlpha
+        var hasTransparency = source.hasAlpha || frame?.background == .transparent
         let extras = composition.extraImages
 
         let canvas: PixelSize
@@ -226,7 +235,7 @@ public enum Planner {
             // transparent one, see-through inputs and uncovered gaps stay so.
             if arrangement.background == .transparent {
                 let covered = result.frames.map { $0.width * $0.height }.reduce(0, +)
-                hasTransparency = source.hasAlpha || extras.contains { $0.info.hasAlpha }
+                hasTransparency = hasTransparency || extras.contains { $0.info.hasAlpha }
                     || covered < canvas.width * canvas.height
             } else {
                 hasTransparency = false
@@ -251,17 +260,19 @@ public enum Planner {
             losses.append(.hdrNotKeptInComposite)
         }
         let output = resize ?? canvas
+        let framed: [QualityNote] = frame.map { [.framed(to: croppedSize, background: $0.background)] } ?? []
         return ConversionPlan(
             request: request,
             strategy: .reencode,
             verdict: .noReencode,
-            notes: losses + [.composited(images: extras.count)] + metadataNotes(source, request.metadata),
+            notes: losses + framed + [.composited(images: extras.count)] + metadataNotes(source, request.metadata),
             lossyQuality: lossyQuality,
             losslessAlternative: nil,
             preservesHDR: false,
             bakedOrientation: orientation.exif,
             outputOrientation: 1,
             pixelCrop: crop,
+            frame: frame,
             resize: resize,
             displayCrop: crop,
             expectedWidth: output.width,

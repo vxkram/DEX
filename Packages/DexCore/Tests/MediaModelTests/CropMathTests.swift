@@ -46,8 +46,21 @@ struct CropMathTests {
         #expect(CropMath.centred(ratio: 16.0 / 9, in: image) == PixelRect(x: 0, y: 118, width: 1000, height: 563))
     }
 
-    @Test func originalRatioMatchesTheImage() {
-        #expect(CropAspect.original.ratio(for: image) == 1.25)
-        #expect(CropAspect.free.ratio(for: image) == nil)
+    @Test func presetsAreFreeAndTheFiveRatios() {
+        #expect(CropAspect.allCases.map(\.title) == ["Free", "1:1", "3:4", "4:3", "16:9", "9:16"])
+        #expect(CropAspect.free.ratio == nil)
+        #expect(CropAspect.threeFour.ratio == 0.75)
+    }
+
+    @Test func fitCanvasHoldsTheWholeImageCentred() {
+        let wide = PixelSize(width: 450, height: 300)
+        let square = Framing(ratio: 1).canvas(for: wide)
+        #expect(square.canvas == PixelSize(width: 450, height: 450))
+        #expect(square.imageRect == PixelRect(x: 0, y: 75, width: 450, height: 300))
+        let tall = Framing(ratio: 9.0 / 16).canvas(for: wide)
+        #expect(tall.canvas == PixelSize(width: 450, height: 800))
+        let wider = Framing(ratio: 16.0 / 9).canvas(for: wide)
+        #expect(wider.canvas == PixelSize(width: 533, height: 300))
+        #expect(wider.imageRect.x == 41)
     }
 }

@@ -41,6 +41,7 @@ private struct AudioTopBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            HomeButton(document: document)
             Text(audio.url.lastPathComponent)
                 .font(.headline)
                 .lineLimit(1)

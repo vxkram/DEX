@@ -177,6 +177,43 @@ struct GeometryTests {
         #expect(try ImageEngine.inspect(url: output).hasHDRGainMap)
     }
 
+    // MARK: Fit
+
+    @Test("Fit keeps every pixel of the photo", arguments: [Framing.Background.white, .black, .transparent, .blur])
+    func fitKeepsThePhotosPixels(_ background: Framing.Background) async throws {
+        defer { fixtures.cleanUp() }
+        var spec = FixtureFactory.Spec()
+        spec.width = 450
+        spec.height = 300
+        spec.noise = true
+        let source = try await fixtures.image(.png, spec)
+        let (output, plan) = try await run(source, .png, Geometry(frame: Framing(ratio: 1, background: background)))
+        #expect(plan.verdict == .lossless)
+        let info = try ImageEngine.inspect(url: output)
+        #expect(info.pixelWidth == 450 && info.pixelHeight == 450)
+        let result = try rgba(output)
+        #expect(maxDifference(try rgba(source), result.cropped(to: PixelRect(x: 0, y: 75, width: 450, height: 300)), border: 0) == 0)
+        // The band above the photo is the background.
+        let corner = Array(result.data[0..<4])
+        switch background {
+        case .transparent: #expect(corner[3] == 0)
+        case .color(let red, _, _): #expect(corner == (red == 1 ? [255, 255, 255, 255] : [0, 0, 0, 255]))
+        case .blur: #expect(corner[3] == 255)
+        }
+    }
+
+    @Test func transparentFitBecomesWhiteInJPEG() async throws {
+        defer { fixtures.cleanUp() }
+        var spec = FixtureFactory.Spec()
+        spec.width = 120
+        spec.height = 60
+        spec.solid = (0, 0, 1)
+        let source = try await fixtures.image(.png, spec)
+        let (output, _) = try await run(source, .jpeg, Geometry(frame: Framing(ratio: 1, background: .transparent)))
+        let corner = Array(try rgba(output).data[0..<3])
+        #expect(corner.allSatisfy { $0 > 245 })
+    }
+
     // MARK: - Helpers
 
     func rgba(_ url: URL) throws -> RawBitmap {

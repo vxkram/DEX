@@ -95,18 +95,20 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
     case hdrNotKeptByLosslessCrop
     case imageResampled(name: String, to: PixelSize)
     case hdrNotKeptInComposite
+    case hdrNotKeptByFit
     // Information
     case noAdditionalLoss
     case orientationApplied
     case cropSnapped(to: PixelRect)
     case optimisedLosslessly
     case composited(images: Int)
+    case framed(to: PixelSize, background: Framing.Background)
     case locationRemoved
     case allMetadataRemoved
 
     public var isLoss: Bool {
         switch self {
-        case .noAdditionalLoss, .orientationApplied, .cropSnapped, .optimisedLosslessly, .composited,
+        case .noAdditionalLoss, .orientationApplied, .cropSnapped, .optimisedLosslessly, .composited, .framed,
              .locationRemoved, .allMetadataRemoved: false
         default: true
         }
@@ -142,6 +144,10 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
             "\(name) is scaled to \(size) (resampled)"
         case .hdrNotKeptInComposite:
             "HDR can't be kept when combining images, so the result is SDR"
+        case .hdrNotKeptByFit:
+            "HDR can't be kept when fitting to a new shape, so the result is SDR"
+        case .framed(let size, let background):
+            "Fitted on a \(size) canvas with \(background.phrase) around it; the photo's own pixels aren't resampled"
         case .composited(let count):
             "Combines \(count + 1) images; formats don't matter, colours are matched"
         case .optimisedLosslessly:
@@ -152,6 +158,18 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
             "Location data will be removed"
         case .allMetadataRemoved:
             "All metadata except orientation and the camera's HDR data will be removed"
+        }
+    }
+}
+
+extension Framing.Background {
+    var phrase: String {
+        switch self {
+        case .transparent: "transparency"
+        case .blur: "a blurred copy"
+        case .color(1, 1, 1): "white"
+        case .color(0, 0, 0): "black"
+        case .color: "a colour"
         }
     }
 }
@@ -175,7 +193,9 @@ public struct ConversionPlan: Codable, Sendable, Equatable {
     /// Crop in the space the engine works in: stored pixels for
     /// `.losslessJPEGTransform`, pixels after `bakedOrientation` for `.reencode`.
     public var pixelCrop: PixelRect?
-    /// Final pixel size after cropping, when resampling.
+    /// Fit after the crop, when it changes the size.
+    public var frame: Framing?
+    /// Final pixel size after cropping and framing, when resampling.
     public var resize: PixelSize?
     /// The crop as the user will see it, after any lossless snapping.
     public var displayCrop: PixelRect?

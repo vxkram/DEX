@@ -179,7 +179,7 @@ private struct LayerControls: View {
     let layer: OverlayLayer
 
     var body: some View {
-        let canvas = document.croppedSize ?? PixelSize(width: 1, height: 1)
+        let canvas = document.framedSize ?? PixelSize(width: 1, height: 1)
         VStack(alignment: .leading, spacing: 14) {
             PanelSectionHeader("Selected layer")
             Explanation("Drag it on the photo to move it; drag its corner to resize.")

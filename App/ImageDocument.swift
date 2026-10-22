@@ -35,6 +35,8 @@ final class ImageDocument {
     /// Rotate/flip, crop and resize, all in display space.
     var geometry = Geometry()
     var cropAspect: CropAspect = .free
+    /// The Fit background last chosen, kept while switching back to Crop.
+    var fitBackground: Framing.Background = .white
     /// Lossless compression (Compress → Lossless).
     var optimize = false
 
@@ -131,8 +133,50 @@ final class ImageDocument {
     /// The crop that will actually be written (JPEG crops may snap).
     var effectiveCrop: PixelRect? { plan?.displayCrop ?? geometry.crop }
 
-    /// Size after cropping, before resizing.
+    /// Size after cropping, before framing and resizing.
     var croppedSize: PixelSize? { effectiveCrop?.size ?? displaySize }
+
+    /// Size after cropping and Fit, before resizing.
+    var framedSize: PixelSize? {
+        guard let croppedSize else { return nil }
+        return geometry.frame.map { $0.canvas(for: croppedSize).canvas } ?? croppedSize
+    }
+
+    var isFitting: Bool { geometry.frame != nil }
+
+    /// Chooses a ratio: a centred crop of it, or in Fit, a canvas of it.
+    func setCropAspect(_ aspect: CropAspect) {
+        cropAspect = aspect
+        geometry.resize = nil
+        guard let ratio = aspect.ratio else {
+            geometry.frame = nil
+            return
+        }
+        if isFitting {
+            geometry.frame = Framing(ratio: ratio, background: fitBackground)
+        } else if let display = displaySize {
+            geometry.crop = CropMath.centred(ratio: ratio, in: display)
+        }
+    }
+
+    /// Crop cuts the picture to the ratio; Fit keeps all of it and adds
+    /// background around it.
+    func setFitting(_ fit: Bool) {
+        guard let ratio = cropAspect.ratio, fit != isFitting else { return }
+        geometry.resize = nil
+        if fit {
+            geometry.crop = nil
+            geometry.frame = Framing(ratio: ratio, background: fitBackground)
+        } else {
+            geometry.frame = nil
+            if let display = displaySize { geometry.crop = CropMath.centred(ratio: ratio, in: display) }
+        }
+    }
+
+    func setFitBackground(_ background: Framing.Background) {
+        fitBackground = background
+        geometry.frame?.background = background
+    }
 
     var hasEdits: Bool { !geometry.isIdentity }
 
@@ -188,7 +232,7 @@ final class ImageDocument {
             let image = ComposedImage(url: url, info: info)
             guard !composedImages.contains(image) else { continue }
             if composeMode == .layers {
-                let layer = OverlayLayer.placed(image, on: croppedSize ?? info.displaySize)
+                let layer = OverlayLayer.placed(image, on: framedSize ?? info.displaySize)
                 layers.append(layer)
                 selectedLayerID = layer.id
             } else {
@@ -245,7 +289,7 @@ final class ImageDocument {
             arrangedImages = images
             basePosition = 0
         } else if !wasLayers && mode == .layers {
-            let canvas = croppedSize ?? PixelSize(width: 1, height: 1)
+            let canvas = framedSize ?? PixelSize(width: 1, height: 1)
             layers = images.map { OverlayLayer.placed($0, on: canvas) }
             selectedLayerID = layers.last?.id
         }
@@ -300,39 +344,9 @@ final class ImageDocument {
     }
 
     func open(_ url: URL) async {
-        exportTask?.cancel()
-        accessedURL?.stopAccessingSecurityScopedResource()
+        reset()
         accessedURL = url.startAccessingSecurityScopedResource() ? url : nil
-
         sourceURL = url
-        audio?.close()
-        audio = nil
-        info = nil
-        preview = nil
-        releaseExtras()
-        geometry = Geometry()
-        cropAspect = .free
-        optimize = false
-        quality = .maximum
-        estimate = nil
-        cropDrag = nil
-        loupeTask?.cancel()
-        loupeImage = nil
-        loadError = nil
-        exportState = .idle
-        isPDFDocument = false
-        pdfInfo = nil
-        pdfPassword = nil
-        pdfPasswordError = nil
-        needsPDFPassword = false
-        pdfEditor = nil
-        pdfEdited = false
-        pdfRevision = 0
-        selectedPageIDs = []
-        editedPDFEstimate = nil
-        pdfMode = .edit
-        pdfPreviewPages = []
-        pdfEstimate = nil
         isLoading = true
 
         if AudioEngine.isAudio(url) {
@@ -362,6 +376,50 @@ final class ImageDocument {
             if sourceURL == url { loadError = String(describing: error) }
         }
         if sourceURL == url { isLoading = false }
+    }
+
+    /// Closes the open file and returns to the drop zone.
+    func goHome() {
+        reset()
+        tool = .convert
+        isLoading = false
+    }
+
+    /// Forgets everything about the open file, as if nothing were open.
+    private func reset() {
+        exportTask?.cancel()
+        accessedURL?.stopAccessingSecurityScopedResource()
+        accessedURL = nil
+        sourceURL = nil
+        audio?.close()
+        audio = nil
+        info = nil
+        preview = nil
+        releaseExtras()
+        geometry = Geometry()
+        cropAspect = .free
+        fitBackground = .white
+        optimize = false
+        quality = .maximum
+        estimate = nil
+        cropDrag = nil
+        loupeTask?.cancel()
+        loupeImage = nil
+        loadError = nil
+        exportState = .idle
+        isPDFDocument = false
+        pdfInfo = nil
+        pdfPassword = nil
+        pdfPasswordError = nil
+        needsPDFPassword = false
+        pdfEditor = nil
+        pdfEdited = false
+        pdfRevision = 0
+        selectedPageIDs = []
+        editedPDFEstimate = nil
+        pdfMode = .edit
+        pdfPreviewPages = []
+        pdfEstimate = nil
     }
 
     // MARK: - PDF → images

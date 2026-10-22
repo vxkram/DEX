@@ -13,7 +13,7 @@ struct ImageStage: View {
             let available = CGSize(width: max(proxy.size.width - 24, 1), height: max(proxy.size.height - 24, 1))
             if let preview = document.preview, let display = document.displaySize {
                 Group {
-                    if isCropping {
+                    if isCropping && !document.isFitting {
                         croppingStage(preview, display: display, available: available)
                     } else if document.composition != nil {
                         CompositeStage(document: document, available: available)
@@ -41,11 +41,10 @@ struct ImageStage: View {
 
     private func resultStage(_ preview: PreviewImage, display: PixelSize, available: CGSize) -> some View {
         let crop = document.effectiveCrop ?? PixelRect(x: 0, y: 0, width: display.width, height: display.height)
-        let scale = min(available.width / CGFloat(crop.width), available.height / CGFloat(crop.height))
-        let full = CGSize(width: CGFloat(display.width) * scale, height: CGFloat(display.height) * scale)
-        return OrientedImage(image: preview, orientation: document.geometry.orientation, size: full)
-            .offset(x: -CGFloat(crop.x) * scale, y: -CGFloat(crop.y) * scale)
-            .frame(width: CGFloat(crop.width) * scale, height: CGFloat(crop.height) * scale, alignment: .topLeading)
+        let framed = document.framedSize ?? crop.size
+        let scale = min(available.width / CGFloat(framed.width), available.height / CGFloat(framed.height))
+        return EditedBase(preview: preview, orientation: document.geometry.orientation, display: display, crop: crop,
+                          frame: document.geometry.frame, opaque: !document.target.supportsAlpha, scale: scale)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .shadow(color: .black.opacity(0.28), radius: 4, y: 2)
             .shadow(color: .black.opacity(0.45), radius: 36, y: 22)
@@ -110,7 +109,7 @@ private struct CropOverlay: View {
                 .offset(x: box.minX, y: box.minY)
                 .gesture(drag(.move))
 
-            ForEach(CropHandle.edges.filter { document.cropAspect.ratio(for: display) == nil || $0.isCorner }, id: \.self) { handle in
+            ForEach(CropHandle.edges.filter { document.cropAspect.ratio == nil || $0.isCorner }, id: \.self) { handle in
                 HandleView(isCorner: handle.isCorner)
                     .position(handle.point(in: box))
                     .gesture(drag(handle))
@@ -132,7 +131,7 @@ private struct CropOverlay: View {
                 let dx = Int((value.translation.width / scale).rounded())
                 let dy = Int((value.translation.height / scale).rounded())
                 let rect = CropMath.adjust(start, handle: handle, dx: dx, dy: dy, in: display,
-                                           ratio: document.cropAspect.ratio(for: display))
+                                           ratio: document.cropAspect.ratio)
                 draft = rect
                 if handle != .move { document.cropDrag = CropDrag(handle: handle, rect: rect) }
             }
@@ -202,7 +201,7 @@ private struct CompositeStage: View {
     let available: CGSize
 
     var body: some View {
-        if let preview = document.preview, let display = document.displaySize, let base = document.croppedSize {
+        if let preview = document.preview, let display = document.displaySize, let base = document.framedSize {
             let crop = document.effectiveCrop ?? PixelRect(x: 0, y: 0, width: display.width, height: display.height)
             let layout = canvasLayout(base: base)
             let scale = min(available.width / CGFloat(layout.canvas.width), available.height / CGFloat(layout.canvas.height))
@@ -211,9 +210,10 @@ private struct CompositeStage: View {
                 backgroundView
                 // The (rotated, cropped) base.
                 // In "match sizes" arrangements the base itself may be scaled.
-                let baseScale = scale * CGFloat(layout.frames[baseIndex].width) / CGFloat(crop.width)
+                let baseScale = scale * CGFloat(layout.frames[baseIndex].width) / CGFloat(base.width)
                 let baseFrame = layout.frames[baseIndex]
-                CroppedBase(preview: preview, orientation: document.geometry.orientation, display: display, crop: crop, scale: baseScale)
+                EditedBase(preview: preview, orientation: document.geometry.orientation, display: display, crop: crop,
+                           frame: document.geometry.frame, opaque: !document.target.supportsAlpha, scale: baseScale)
                     .frame(width: CGFloat(baseFrame.width) * scale, height: CGFloat(baseFrame.height) * scale)
                     .offset(x: CGFloat(baseFrame.x) * scale, y: CGFloat(baseFrame.y) * scale)
 
@@ -268,7 +268,7 @@ private struct CompositeStage: View {
 }
 
 /// The base preview with the user's rotate/flip and crop, filling a frame.
-private struct CroppedBase: View {
+struct CroppedBase: View {
     let preview: PreviewImage
     let orientation: Orientation
     let display: PixelSize
@@ -281,6 +281,51 @@ private struct CroppedBase: View {
             .offset(x: -CGFloat(crop.x) * scale, y: -CGFloat(crop.y) * scale)
             .frame(width: CGFloat(crop.width) * scale, height: CGFloat(crop.height) * scale, alignment: .topLeading)
             .clipped()
+    }
+}
+
+/// The base as edited: rotated/flipped, cropped and, with Fit, on its
+/// canvas with the background around it.
+struct EditedBase: View {
+    let preview: PreviewImage
+    let orientation: Orientation
+    let display: PixelSize
+    let crop: PixelRect
+    let frame: Framing?
+    /// The format can't be transparent: "None" shows as white, as exported.
+    let opaque: Bool
+    let scale: CGFloat
+
+    var body: some View {
+        let cropped = CroppedBase(preview: preview, orientation: orientation, display: display, crop: crop, scale: scale)
+        if let frame {
+            let (canvas, rect) = frame.canvas(for: crop.size)
+            let size = CGSize(width: CGFloat(canvas.width) * scale, height: CGFloat(canvas.height) * scale)
+            ZStack(alignment: .topLeading) {
+                background(frame.background, cropped: cropped, size: size)
+                cropped.offset(x: CGFloat(rect.x) * scale, y: CGFloat(rect.y) * scale)
+            }
+            .frame(width: size.width, height: size.height, alignment: .topLeading)
+            .clipped()
+        } else {
+            cropped
+        }
+    }
+
+    @ViewBuilder
+    private func background(_ background: Framing.Background, cropped: CroppedBase, size: CGSize) -> some View {
+        switch background {
+        case .transparent:
+            if opaque { Color.white } else { TransparencyPattern() }
+        case .color(let red, let green, let blue):
+            Color(red: red, green: green, blue: blue)
+        case .blur:
+            let cover = max(size.width / CGFloat(crop.width), size.height / CGFloat(crop.height))
+            CroppedBase(preview: preview, orientation: orientation, display: display, crop: crop, scale: cover)
+                .blur(radius: max(size.width, size.height) / 32, opaque: true)
+                .frame(width: size.width, height: size.height)
+                .overlay(Color.black.opacity(0.18))
+        }
     }
 }
 

@@ -114,7 +114,45 @@ public struct Orientation: Codable, Sendable, Equatable {
     }
 }
 
-/// Edits applied in display space, in this order: rotate/flip, crop, resize.
+/// Fit: the whole picture on a canvas of an aspect ratio, the space
+/// around it filled with a background. The picture's own pixels are never
+/// resampled; only pixels are added around them.
+public struct Framing: Codable, Sendable, Equatable {
+    public enum Background: Codable, Sendable, Equatable {
+        /// sRGB components 0...1.
+        case color(red: Double, green: Double, blue: Double)
+        case transparent
+        /// A blurred, slightly darkened copy of the picture, filling the canvas.
+        case blur
+
+        public static let white = Background.color(red: 1, green: 1, blue: 1)
+        public static let black = Background.color(red: 0, green: 0, blue: 0)
+    }
+
+    /// Width / height of the canvas.
+    public var ratio: Double
+    public var background: Background
+
+    public init(ratio: Double, background: Background = .white) {
+        self.ratio = ratio
+        self.background = background
+    }
+
+    /// The smallest canvas of `ratio` that holds the whole image at its own
+    /// size, and where the image sits on it (centred). Shared by the
+    /// planner, the engine and the preview so they always agree.
+    public func canvas(for size: PixelSize) -> (canvas: PixelSize, imageRect: PixelRect) {
+        let canvas = Double(size.width) / Double(max(size.height, 1)) > ratio
+            ? PixelSize(width: size.width, height: max(Int((Double(size.width) / ratio).rounded()), size.height))
+            : PixelSize(width: max(Int((Double(size.height) * ratio).rounded()), size.width), height: size.height)
+        let rect = PixelRect(x: (canvas.width - size.width) / 2, y: (canvas.height - size.height) / 2,
+                             width: size.width, height: size.height)
+        return (canvas, rect)
+    }
+}
+
+/// Edits applied in display space, in this order: rotate/flip, crop, frame
+/// (Fit), resize.
 public struct Geometry: Codable, Sendable, Equatable {
     /// Rotation and flip on top of the file's own orientation.
     public var orientation: Orientation
@@ -123,19 +161,23 @@ public struct Geometry: Codable, Sendable, Equatable {
     /// Crop exactly, even when a lossless JPEG crop would need to snap to
     /// block boundaries. Forces a re-encode for JPEG.
     public var exactCrop: Bool
-    /// Output size after cropping.
+    /// Fit the (cropped) picture onto a canvas of another aspect ratio.
+    public var frame: Framing?
+    /// Output size after cropping and framing.
     public var resize: PixelSize?
 
-    public init(orientation: Orientation = .identity, crop: PixelRect? = nil, exactCrop: Bool = false, resize: PixelSize? = nil) {
+    public init(orientation: Orientation = .identity, crop: PixelRect? = nil, exactCrop: Bool = false,
+                frame: Framing? = nil, resize: PixelSize? = nil) {
         self.orientation = orientation
         self.crop = crop
         self.exactCrop = exactCrop
+        self.frame = frame
         self.resize = resize
     }
 
     public static let none = Geometry()
 
-    public var isIdentity: Bool { orientation.isIdentity && crop == nil && resize == nil }
+    public var isIdentity: Bool { orientation.isIdentity && crop == nil && frame == nil && resize == nil }
 
     public mutating func rotateClockwise() {
         orientation = orientation.followed(by: Orientation(turns: 1))

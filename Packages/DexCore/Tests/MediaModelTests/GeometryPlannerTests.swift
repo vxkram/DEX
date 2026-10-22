@@ -159,4 +159,43 @@ struct GeometryPlannerTests {
         #expect(result.notes.contains(.resampled(from: PixelSize(width: 200, height: 100), to: PixelSize(width: 100, height: 50))))
         #expect(result.expectedWidth == 100 && result.expectedHeight == 50)
     }
+
+    // MARK: Fit
+
+    @Test func fitAddsACanvasWithoutResampling() throws {
+        let geometry = Geometry(frame: Framing(ratio: 1, background: .blur))
+        let result = try plan(info(.png, width: 450, height: 300), .png, geometry)
+        #expect(result.strategy == .reencode)
+        #expect(result.verdict == .lossless)
+        #expect(result.expectedWidth == 450 && result.expectedHeight == 450)
+        #expect(result.notes.contains(.framed(to: PixelSize(width: 450, height: 450), background: .blur)))
+        #expect(!result.notes.contains { if case .resampled = $0 { true } else { false } })
+    }
+
+    @Test func fitToTheImagesOwnShapeIsNoFit() throws {
+        let result = try plan(info(.png, width: 300, height: 300), .png, Geometry(frame: Framing(ratio: 1)))
+        #expect(result.strategy == .copyFile)
+        #expect(result.frame == nil)
+    }
+
+    @Test func fitAppliesAfterTheCropAndBeforeTheResize() throws {
+        let geometry = Geometry(crop: PixelRect(x: 0, y: 0, width: 200, height: 100), frame: Framing(ratio: 1),
+                                resize: PixelSize(width: 100, height: 100))
+        let result = try plan(info(.jpeg, width: 400, height: 300), .jpeg, geometry)
+        #expect(result.notes.contains(.resampled(from: PixelSize(width: 200, height: 200), to: PixelSize(width: 100, height: 100))))
+        #expect(result.expectedWidth == 100 && result.expectedHeight == 100)
+    }
+
+    @Test func transparentFitIsFlattenedForJPEG() throws {
+        let result = try plan(info(.png, width: 400, height: 300), .jpeg, Geometry(frame: Framing(ratio: 1, background: .transparent)))
+        #expect(result.notes.contains(.transparencyFlattened))
+        let png = try plan(info(.png, width: 400, height: 300), .png, Geometry(frame: Framing(ratio: 1, background: .transparent)))
+        #expect(!png.notes.contains(.transparencyFlattened))
+    }
+
+    @Test func fitDropsTheGainMapAndSaysSo() throws {
+        let result = try plan(info(.heic, hdr: true), .heic, Geometry(frame: Framing(ratio: 1)))
+        #expect(!result.preservesHDR)
+        #expect(result.notes.contains(.hdrNotKeptByFit))
+    }
 }

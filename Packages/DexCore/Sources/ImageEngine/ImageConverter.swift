@@ -74,7 +74,7 @@ extension ImageEngine {
     private static func keepSmallerIfOptimizing(
         _ plan: ConversionPlan, from source: URL, output: URL, token: CancellationToken
     ) throws {
-        guard plan.request.optimize, plan.pixelCrop == nil, plan.resize == nil,
+        guard plan.request.optimize, plan.pixelCrop == nil, plan.frame == nil, plan.resize == nil,
               fileSize(output) >= fileSize(source)
         else { return }
         var request = plan.request
@@ -287,7 +287,8 @@ extension ImageEngine {
                 properties[kCGImagePropertyTIFFDictionary] = tiff
             }
             let composes = plan.request.composition.map { !$0.isEmpty } ?? false
-            let changesPixels = composes || plan.appliesOrientation || plan.pixelCrop != nil || plan.resize != nil
+            let changesPixels = composes || plan.appliesOrientation || plan.pixelCrop != nil || plan.frame != nil
+                || plan.resize != nil
             // TIFF compression is only honoured for decoded images, not
             // AddImageFromSource (measured on macOS 27: 36.9 MB vs 10.7 MB).
             if changesPixels || plan.request.metadata == .removeAll || target == .tiff {
@@ -369,7 +370,7 @@ extension ImageEngine {
     /// full-resolution image; the exact size is then fitted on the small
     /// image.
     static func planImage(_ source: CGImageSource, index: Int, name: String, plan: ConversionPlan) throws -> CGImage {
-        if let size = plan.resize, plan.pixelCrop == nil,
+        if let size = plan.resize, plan.pixelCrop == nil, plan.frame == nil,
            let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
            let width = properties[kCGImagePropertyPixelWidth] as? Int,
            let height = properties[kCGImagePropertyPixelHeight] as? Int,
@@ -392,10 +393,13 @@ extension ImageEngine {
         return try geometryApplied(to: decodedFrame(source, index: index, name: name), plan: plan)
     }
 
-    /// Bakes orientation, then crops, then resizes, as the plan says.
+    /// Bakes orientation, then crops, frames (Fit) and resizes, as the plan says.
     static func geometryApplied(to image: CGImage, plan: ConversionPlan) throws -> CGImage {
         var result = try PixelOps.orient(image, plan.bakedOrientation)
         if let crop = plan.pixelCrop { result = try PixelOps.crop(result, crop) }
+        if let frame = plan.frame {
+            result = try PixelOps.frame(result, frame, opaque: !plan.request.target.supportsAlpha)
+        }
         if let size = plan.resize { result = try PixelOps.resize(result, to: size) }
         return result
     }

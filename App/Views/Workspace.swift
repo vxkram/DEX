@@ -84,6 +84,7 @@ private struct TopBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
+            HomeButton(document: document)
             if let url = document.sourceURL {
                 Text(url.lastPathComponent)
                     .font(.headline)
@@ -124,6 +125,20 @@ private struct TopBar: View {
         .padding(.trailing, 18)
         .frame(height: Theme.titlebarHeight)
         .background(Color.clear.contentShape(Rectangle()).gesture(WindowDragGesture()))
+    }
+}
+
+/// Closes the open file and returns to the drop zone.
+struct HomeButton: View {
+    let document: ImageDocument
+
+    var body: some View {
+        Button("Home", systemImage: "house") { document.goHome() }
+            .labelStyle(.iconOnly)
+            .buttonStyle(.glass)
+            .tint(.clear)
+            .controlSize(.small)
+            .help("Home (⇧⌘H)")
     }
 }
 

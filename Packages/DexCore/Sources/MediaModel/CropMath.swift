@@ -68,32 +68,29 @@ public enum CropMath {
 
 /// Aspect-ratio presets for the crop tool.
 public enum CropAspect: String, CaseIterable, Identifiable, Sendable {
-    case free, original, square, fourThree, threeTwo, sixteenNine, fourFive, nineSixteen
+    case free, square, threeFour, fourThree, sixteenNine, nineSixteen
 
     public var id: Self { self }
 
     public var title: String {
         switch self {
         case .free: "Free"
-        case .original: "Original"
         case .square: "1:1"
+        case .threeFour: "3:4"
         case .fourThree: "4:3"
-        case .threeTwo: "3:2"
         case .sixteenNine: "16:9"
-        case .fourFive: "4:5"
         case .nineSixteen: "9:16"
         }
     }
 
-    public func ratio(for size: PixelSize) -> Double? {
+    /// Width / height, or nil for a free crop.
+    public var ratio: Double? {
         switch self {
         case .free: nil
-        case .original: Double(size.width) / Double(size.height)
         case .square: 1
+        case .threeFour: 3.0 / 4
         case .fourThree: 4.0 / 3
-        case .threeTwo: 3.0 / 2
         case .sixteenNine: 16.0 / 9
-        case .fourFive: 4.0 / 5
         case .nineSixteen: 9.0 / 16
         }
     }
