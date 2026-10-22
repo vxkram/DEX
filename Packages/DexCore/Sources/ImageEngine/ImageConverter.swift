@@ -253,8 +253,10 @@ extension ImageEngine {
             CGImageDestinationSetProperties(destination, container)
         }
 
-        for index in 0..<frames {
+        for frame in 0..<frames {
             try token.check()
+            // Trims and chosen stills start part-way through the source.
+            let index = plan.firstFrame + frame
             var properties = (CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]) ?? [:]
             if let quality = plan.lossyQuality {
                 properties[kCGImageDestinationLossyCompressionQuality] = quality
@@ -305,7 +307,7 @@ extension ImageEngine {
             } else {
                 CGImageDestinationAddImageFromSource(destination, source, index, properties as CFDictionary)
             }
-            progress?(Double(index + 1) / Double(frames) * 0.95)
+            progress?(Double(frame + 1) / Double(frames) * 0.95)
         }
         if plan.preservesHDR {
             try copyGainMaps(from: source, to: destination, plan: plan)

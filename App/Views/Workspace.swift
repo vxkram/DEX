@@ -48,6 +48,9 @@ struct Workspace: View {
                         // Tool panels show export status in their footer.
                         if tool == nil || tool == .info { ExportToast(document: document) }
                     }
+                if let animation = document.animation, tool != .pdf {
+                    TimelineView(document: document, animation: animation)
+                }
                 ActionDock(selection: $document.tool, isPDF: document.isPDFDocument)
             }
 

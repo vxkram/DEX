@@ -61,12 +61,22 @@ public enum Planner {
         let frame = geometry.frame.flatMap { $0.canvas(for: croppedSize).canvas == croppedSize ? nil : $0 }
         let framedSize = frame?.canvas(for: croppedSize).canvas ?? croppedSize
         let resize = geometry.resize.flatMap { $0 == framedSize || $0.width < 1 || $0.height < 1 ? nil : $0 }
+        // Animations: a trim when they stay animated, one chosen frame when not.
+        let lastFrame = max(source.frameCount - 1, 0)
+        let keepsAnimation = source.isAnimated && target.supportsAnimation
+        let trim = geometry.frameRange.flatMap { range -> ClosedRange<Int>? in
+            let kept = range.clamped(to: 0...lastFrame)
+            return keepsAnimation && kept != 0...lastFrame ? kept : nil
+        }
+        let still = source.isAnimated && !keepsAnimation ? min(max(geometry.stillFrame ?? 0, 0), lastFrame) : 0
+        let picksFrames = trim != nil || still != 0
         let changesPixels = crop != nil || frame != nil || resize != nil
 
         if let composition = request.composition, !composition.isEmpty {
             return compositePlan(
                 source, sourceFormat: sourceFormat, request: request, composition: composition,
-                orientation: total, crop: crop, frame: frame, baseSize: framedSize, resize: resize
+                orientation: total, crop: crop, frame: frame, baseSize: framedSize, resize: resize,
+                stillFrame: source.isAnimated ? min(max(geometry.stillFrame ?? 0, 0), lastFrame) : 0
             )
         }
 
@@ -88,7 +98,7 @@ public enum Planner {
 
         // 1. Same format without new pixels: copy, or rewrite metadata
         //    (including a new orientation tag for rotate/flip).
-        if sourceFormat == target && !changesPixels && !wantsLossy && !optimizes {
+        if sourceFormat == target && !changesPixels && !picksFrames && !wantsLossy && !optimizes {
             let changesMetadata = !geometry.orientation.isIdentity
                 || request.metadata == .removeAll
                 || (request.metadata == .removeLocation && source.hasGPS)
@@ -157,8 +167,12 @@ public enum Planner {
                 losses.append(.transparencyFlattened)
             }
             if source.isAnimated && !target.supportsAnimation {
-                losses.append(.animationFirstFrameOnly(frames: source.frameCount))
+                losses.append(still == 0 ? .animationFirstFrameOnly(frames: source.frameCount)
+                                         : .animationOneFrameOnly(index: still, frames: source.frameCount))
                 frames = 1
+            } else if let trim {
+                info.append(.trimmed(frames: trim.count, of: source.frameCount))
+                frames = trim.count
             }
             if let depth = source.bitsPerComponent, depth > target.maxBitsPerComponent {
                 losses.append(.bitDepthReduced(from: depth, to: target.maxBitsPerComponent))
@@ -194,6 +208,7 @@ public enum Planner {
             outputOrientation: outputOrientation,
             pixelCrop: pixelCrop,
             frame: strategy == .reencode ? frame : nil,
+            firstFrame: strategy == .reencode ? (trim?.lowerBound ?? still) : 0,
             resize: resize,
             displayCrop: displayCrop,
             expectedWidth: outputSize.width,
@@ -206,7 +221,8 @@ public enum Planner {
     /// with every scaled input and lost property disclosed.
     private static func compositePlan(
         _ source: MediaInfo, sourceFormat: ImageFormat, request: ConvertRequest, composition: Composition,
-        orientation: Orientation, crop: PixelRect?, frame: Framing?, baseSize croppedSize: PixelSize, resize: PixelSize?
+        orientation: Orientation, crop: PixelRect?, frame: Framing?, baseSize croppedSize: PixelSize, resize: PixelSize?,
+        stillFrame: Int
     ) -> ConversionPlan {
         let target = request.target
         var losses: [QualityNote] = []
@@ -274,7 +290,10 @@ public enum Planner {
         if let resize { losses.append(.resampled(from: canvas, to: resize)) }
         if target == .gif { losses.append(.paletteLimited) }
         if hasTransparency && !target.supportsAlpha { losses.append(.transparencyFlattened) }
-        if source.isAnimated { losses.append(.animationFirstFrameOnly(frames: source.frameCount)) }
+        if source.isAnimated {
+            losses.append(stillFrame == 0 ? .animationFirstFrameOnly(frames: source.frameCount)
+                                          : .animationOneFrameOnly(index: stillFrame, frames: source.frameCount))
+        }
         let depth = ([source] + extras.map(\.info)).compactMap(\.bitsPerComponent).max() ?? 8
         if depth > target.maxBitsPerComponent {
             losses.append(.bitDepthReduced(from: depth, to: target.maxBitsPerComponent))
@@ -301,6 +320,7 @@ public enum Planner {
             outputOrientation: 1,
             pixelCrop: crop,
             frame: frame,
+            firstFrame: stillFrame,
             resize: resize,
             displayCrop: crop,
             expectedWidth: output.width,

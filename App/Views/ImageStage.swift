@@ -11,7 +11,7 @@ struct ImageStage: View {
     var body: some View {
         GeometryReader { proxy in
             let available = CGSize(width: max(proxy.size.width - 24, 1), height: max(proxy.size.height - 24, 1))
-            if let preview = document.preview, let display = document.displaySize {
+            if let preview = document.stagePreview, let display = document.displaySize {
                 Group {
                     // Crop edits the opened photo on its own, even when it
                     // sits on a canvas or among other images.
@@ -229,7 +229,7 @@ private struct CompositeStage: View {
     let available: CGSize
 
     var body: some View {
-        if let preview = document.preview, let display = document.displaySize, let base = document.framedSize {
+        if let preview = document.stagePreview, let display = document.displaySize, let base = document.framedSize {
             let crop = document.effectiveCrop ?? PixelRect(x: 0, y: 0, width: display.width, height: display.height)
             let layout = canvasLayout(base: base)
             let scale = min(available.width / CGFloat(layout.canvas.width), available.height / CGFloat(layout.canvas.height))

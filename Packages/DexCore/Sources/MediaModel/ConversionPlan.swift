@@ -87,6 +87,7 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
     case paletteLimited
     case transparencyFlattened
     case animationFirstFrameOnly(frames: Int)
+    case animationOneFrameOnly(index: Int, frames: Int)
     case bitDepthReduced(from: Int, to: Int)
     case hdrDropped(to: ImageFormat)
     case colourModelConverted(from: String)
@@ -101,6 +102,7 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
     case orientationApplied
     case cropSnapped(to: PixelRect)
     case optimisedLosslessly
+    case trimmed(frames: Int, of: Int)
     case composited(images: Int)
     case placedOnCanvas(PixelSize, images: Int)
     case framed(to: PixelSize, background: Framing.Background)
@@ -109,7 +111,7 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
 
     public var isLoss: Bool {
         switch self {
-        case .noAdditionalLoss, .orientationApplied, .cropSnapped, .optimisedLosslessly, .composited, .placedOnCanvas, .framed,
+        case .noAdditionalLoss, .orientationApplied, .cropSnapped, .optimisedLosslessly, .trimmed, .composited, .placedOnCanvas, .framed,
              .locationRemoved, .allMetadataRemoved: false
         default: true
         }
@@ -125,6 +127,10 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
             "Transparency will be flattened onto white"
         case .animationFirstFrameOnly(let frames):
             "Animation will be reduced to its first frame (of \(frames))"
+        case .animationOneFrameOnly(let index, let frames):
+            "Animation will be reduced to frame \(index + 1) (of \(frames))"
+        case .trimmed(let frames, let total):
+            "Keeps \(frames) of \(total) frames, each with its own timing"
         case .bitDepthReduced(let from, let to):
             "Colour depth reduced from \(from)-bit to \(to)-bit"
         case .hdrDropped(let format):
@@ -199,6 +205,9 @@ public struct ConversionPlan: Codable, Sendable, Equatable {
     public var pixelCrop: PixelRect?
     /// Fit after the crop, when it changes the size.
     public var frame: Framing?
+    /// The source frame the output starts at: the trim's first frame for
+    /// animations, the chosen frame for a still.
+    public var firstFrame: Int = 0
     /// Final pixel size after cropping and framing, when resampling.
     public var resize: PixelSize?
     /// The crop as the user will see it, after any lossless snapping.

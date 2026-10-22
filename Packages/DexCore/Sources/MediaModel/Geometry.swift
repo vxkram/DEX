@@ -165,19 +165,27 @@ public struct Geometry: Codable, Sendable, Equatable {
     public var frame: Framing?
     /// Output size after cropping and framing.
     public var resize: PixelSize?
+    /// Animations saved as animations: the frames kept (0-based, inclusive).
+    public var frameRange: ClosedRange<Int>?
+    /// Animations saved as a still image: the frame to keep (0-based).
+    public var stillFrame: Int?
 
     public init(orientation: Orientation = .identity, crop: PixelRect? = nil, exactCrop: Bool = false,
-                frame: Framing? = nil, resize: PixelSize? = nil) {
+                frame: Framing? = nil, resize: PixelSize? = nil, frameRange: ClosedRange<Int>? = nil, stillFrame: Int? = nil) {
         self.orientation = orientation
         self.crop = crop
         self.exactCrop = exactCrop
         self.frame = frame
         self.resize = resize
+        self.frameRange = frameRange
+        self.stillFrame = stillFrame
     }
 
     public static let none = Geometry()
 
-    public var isIdentity: Bool { orientation.isIdentity && crop == nil && frame == nil && resize == nil }
+    public var isIdentity: Bool {
+        orientation.isIdentity && crop == nil && frame == nil && resize == nil && frameRange == nil && stillFrame == nil
+    }
 
     public mutating func rotateClockwise() {
         orientation = orientation.followed(by: Orientation(turns: 1))

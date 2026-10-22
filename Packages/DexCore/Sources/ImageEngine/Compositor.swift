@@ -16,7 +16,7 @@ enum Compositor {
         var basePlan = plan
         basePlan.resize = nil
         let base = try ImageEngine.geometryApplied(
-            to: ImageEngine.decodedFrame(source, index: 0, name: name), plan: basePlan
+            to: ImageEngine.decodedFrame(source, index: plan.firstFrame, name: name), plan: basePlan
         )
         var extras = try composition.extraImages.map { image -> CGImage in
             try token.check()

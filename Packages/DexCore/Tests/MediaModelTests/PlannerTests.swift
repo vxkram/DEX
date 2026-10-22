@@ -221,4 +221,34 @@ struct PlannerTests {
             }
         }
     }
+
+    // MARK: Animation timeline
+
+    @Test func trimKeepsTheChosenFrames() throws {
+        var request = ConvertRequest(target: .gif)
+        request.geometry.frameRange = 2...5
+        let result = try Planner.plan(info(.gif, frames: 10), request, writable: Self.allWritable)
+        #expect(result.expectedFrameCount == 4)
+        #expect(result.firstFrame == 2)
+        #expect(result.verdict == .lossless)
+        #expect(result.notes.contains(.trimmed(frames: 4, of: 10)))
+    }
+
+    @Test func untrimmedRangeIsACopy() throws {
+        var request = ConvertRequest(target: .gif, metadata: .keepAll)
+        request.geometry.frameRange = 0...9
+        let result = try Planner.plan(info(.gif, frames: 10), request, writable: Self.allWritable)
+        #expect(result.strategy == .copyFile)
+        #expect(result.expectedFrameCount == 10)
+    }
+
+    @Test func stillUsesTheChosenFrame() throws {
+        var request = ConvertRequest(target: .png)
+        request.geometry.stillFrame = 7
+        request.geometry.frameRange = 2...5  // only matters for GIF output
+        let result = try Planner.plan(info(.gif, frames: 10), request, writable: Self.allWritable)
+        #expect(result.expectedFrameCount == 1)
+        #expect(result.firstFrame == 7)
+        #expect(result.notes.contains(.animationOneFrameOnly(index: 7, frames: 10)))
+    }
 }

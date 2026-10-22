@@ -111,6 +111,14 @@ final class ImageDocument {
     /// The real output size for the current settings, when known.
     private(set) var estimate: SizeEstimate?
 
+    // MARK: Animation state
+    /// Every frame of an animated GIF/WebP, small, for the timeline.
+    private(set) var animation: AnimationFrames?
+    /// The frame shown in the preview.
+    private(set) var playhead = 0
+    private(set) var isPlaying = false
+    @ObservationIgnored private var playTask: Task<Void, Never>?
+
     /// The tool panel that is open (nil = none).
     var tool: Tool? = .convert
     /// Set while a crop corner or edge is being dragged; drives the loupe.
@@ -153,6 +161,69 @@ final class ImageDocument {
     var framedSize: PixelSize? {
         guard let croppedSize else { return nil }
         return geometry.frame.map { $0.canvas(for: croppedSize).canvas } ?? croppedSize
+    }
+
+    // MARK: Animation
+
+    /// Saving keeps the animation (GIF); anything else keeps one frame.
+    var keepsAnimation: Bool { animation != nil && target.supportsAnimation && !exportAsPDF }
+
+    var frameCount: Int { animation?.frames.count ?? 1 }
+
+    /// The frames a GIF export keeps.
+    var trimRange: ClosedRange<Int> { geometry.frameRange ?? 0...max(frameCount - 1, 0) }
+
+    /// What the preview shows: the frame at the playhead of an animation.
+    var stagePreview: PreviewImage? {
+        guard let animation, animation.frames.indices.contains(playhead) else { return preview }
+        return PreviewImage(cgImage: animation.frames[playhead])
+    }
+
+    /// Moves the playhead; for a still export, that frame is the one saved.
+    func seek(to frame: Int) {
+        pause()
+        showFrame(frame)
+        geometry.stillFrame = playhead == 0 ? nil : playhead
+    }
+
+    private func showFrame(_ frame: Int) {
+        playhead = min(max(frame, 0), frameCount - 1)
+    }
+
+    func setTrim(start: Int? = nil, end: Int? = nil) {
+        let range = trimRange
+        let lower = min(max(start ?? range.lowerBound, 0), range.upperBound)
+        let upper = max(min(end ?? range.upperBound, frameCount - 1), lower)
+        geometry.frameRange = lower == 0 && upper == frameCount - 1 ? nil : lower...upper
+        showFrame(start != nil ? lower : upper)
+    }
+
+    func togglePlayback() {
+        if isPlaying { pause() } else { play() }
+    }
+
+    /// Plays at the file's own timing, looping inside the trim for a GIF.
+    private func play() {
+        guard let animation else { return }
+        isPlaying = true
+        playTask = Task { [weak self] in
+            while let self, !Task.isCancelled {
+                let range = self.keepsAnimation ? self.trimRange : 0...(animation.frames.count - 1)
+                if !range.contains(self.playhead) { self.showFrame(range.lowerBound) }
+                try? await Task.sleep(for: .seconds(animation.delays[self.playhead]))
+                guard !Task.isCancelled else { return }
+                self.showFrame(self.playhead >= range.upperBound ? range.lowerBound : self.playhead + 1)
+            }
+        }
+    }
+
+    func pause() {
+        playTask?.cancel()
+        playTask = nil
+        guard isPlaying else { return }
+        isPlaying = false
+        // A still export saves the frame you stopped on.
+        if !keepsAnimation { geometry.stillFrame = playhead == 0 ? nil : playhead }
     }
 
     // MARK: Crop subject
@@ -523,6 +594,10 @@ final class ImageDocument {
             let preview = try await ImageEngine.preview(url: url)
             guard sourceURL == url else { return }
             self.preview = preview
+            if info.isAnimated && info.frameCount <= ImageEngine.maxTimelineFrames,
+               let frames = try? await ImageEngine.animationFrames(url: url), sourceURL == url {
+                animation = frames
+            }
         } catch {
             if sourceURL == url { loadError = String(describing: error) }
         }
@@ -555,6 +630,9 @@ final class ImageDocument {
 
     /// Forgets everything about the open file, as if nothing were open.
     private func reset() {
+        pause()
+        animation = nil
+        playhead = 0
         exportTask?.cancel()
         accessedURL?.stopAccessingSecurityScopedResource()
         accessedURL = nil

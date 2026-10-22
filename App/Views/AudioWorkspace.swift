@@ -487,17 +487,11 @@ private struct ZoomButton: View {
 
 /// Space plays, I/O set the trim, ←/→ move a second. A key monitor rather than shortcut buttons, so the
 /// keys still type normally in the time fields.
-private struct AudioShortcuts: NSViewRepresentable {
+private struct AudioShortcuts: View {
     let audio: AudioDocument
 
-    func makeNSView(context: Context) -> MonitorView {
-        let view = MonitorView()
-        view.handle = handle
-        return view
-    }
-
-    func updateNSView(_ view: MonitorView, context: Context) {
-        view.handle = handle
+    var body: some View {
+        KeyMonitor(handle: handle)
     }
 
     private func handle(_ event: NSEvent) -> Bool {
@@ -514,33 +508,6 @@ private struct AudioShortcuts: NSViewRepresentable {
             }
         }
         return true
-    }
-
-    final class MonitorView: NSView {
-        var handle: ((NSEvent) -> Bool)?
-        private var monitor: Any?
-
-        override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            if let monitor { NSEvent.removeMonitor(monitor) }
-            monitor = nil
-            guard window != nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard let self, event.window === self.window,
-                      !(self.window?.firstResponder is NSText),
-                      self.window?.attachedSheet == nil
-                else { return event }
-                return self.handle?(event) == true ? nil : event
-            }
-        }
-
-        override func removeFromSuperview() {
-            if let monitor { NSEvent.removeMonitor(monitor) }
-            monitor = nil
-            super.removeFromSuperview()
-        }
     }
 }
 

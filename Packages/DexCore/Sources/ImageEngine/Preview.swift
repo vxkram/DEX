@@ -8,6 +8,11 @@ import MediaModel
 public struct PreviewImage: @unchecked Sendable {
     public let cgImage: CGImage
     public let isHDR: Bool
+
+    public init(cgImage: CGImage, isHDR: Bool = false) {
+        self.cgImage = cgImage
+        self.isHDR = isHDR
+    }
 }
 
 extension ImageEngine {

@@ -28,6 +28,8 @@ struct FixtureFactory: Sendable {
         var orientation = 1
         var gps = false
         var frames = 1
+        /// Per-frame GIF delays in seconds (default: whatever ImageIO writes).
+        var delays: [Double]?
         /// Deterministic per-pixel noise, like a real photo's grain.
         var noise = false
         /// Fill with one colour instead of the gradient (0...1 sRGB).
@@ -61,7 +63,11 @@ struct FixtureFactory: Sendable {
             ]
         }
         for frame in 0..<spec.frames {
-            CGImageDestinationAddImage(destination, try makeImage(spec, seed: frame), properties as CFDictionary)
+            var frameProperties = properties
+            if let delays = spec.delays {
+                frameProperties[kCGImagePropertyGIFDictionary] = [kCGImagePropertyGIFDelayTime: delays[frame]]
+            }
+            CGImageDestinationAddImage(destination, try makeImage(spec, seed: frame), frameProperties as CFDictionary)
         }
         guard CGImageDestinationFinalize(destination) else { throw FixtureError.encodeFailed(format) }
         return url
