@@ -240,6 +240,29 @@ public enum Planner {
             } else {
                 hasTransparency = false
             }
+        case .canvas(let page):
+            canvas = page.size
+            let baseHeight = page.base.width * Double(croppedSize.height) / Double(max(croppedSize.width, 1))
+            if page.base.isResampled(native: croppedSize) {
+                losses.append(.imageResampled(
+                    name: source.fileName, to: PixelSize(width: Int(page.base.width.rounded()), height: Int(baseHeight.rounded()))
+                ))
+            }
+            for layer in page.layers where layer.isResampled {
+                losses.append(.imageResampled(
+                    name: layer.image.info.fileName,
+                    to: PixelSize(width: Int(layer.width.rounded()), height: Int(layer.height.rounded()))
+                ))
+            }
+            // Over a colour everything ends up opaque. Over nothing, only an
+            // opaque, upright item filling the page hides all of it.
+            if page.background == .transparent {
+                let filled = (!hasTransparency && covers(page.base, height: baseHeight, canvas: canvas))
+                    || page.layers.contains { !$0.image.info.hasAlpha && covers($0.placement, height: $0.height, canvas: canvas) }
+                hasTransparency = !filled
+            } else {
+                hasTransparency = false
+            }
         }
 
         var lossyQuality: Double?
@@ -261,11 +284,16 @@ public enum Planner {
         }
         let output = resize ?? canvas
         let framed: [QualityNote] = frame.map { [.framed(to: croppedSize, background: $0.background)] } ?? []
+        let combined: QualityNote = if case .canvas = composition {
+            .placedOnCanvas(canvas, images: extras.count)
+        } else {
+            .composited(images: extras.count)
+        }
         return ConversionPlan(
             request: request,
             strategy: .reencode,
             verdict: .noReencode,
-            notes: losses + framed + [.composited(images: extras.count)] + metadataNotes(source, request.metadata),
+            notes: losses + framed + [combined] + metadataNotes(source, request.metadata),
             lossyQuality: lossyQuality,
             losslessAlternative: nil,
             preservesHDR: false,
@@ -279,6 +307,13 @@ public enum Planner {
             expectedHeight: output.height,
             expectedFrameCount: 1
         )
+    }
+
+    /// Whether a placement fills the whole canvas with nothing see-through.
+    private static func covers(_ placement: LayerPlacement, height: Double, canvas: PixelSize) -> Bool {
+        guard placement.opacity >= 1, placement.rotation.truncatingRemainder(dividingBy: 180) == 0 else { return false }
+        return placement.centerX - placement.width / 2 <= 0 && placement.centerX + placement.width / 2 >= Double(canvas.width)
+            && placement.centerY - height / 2 <= 0 && placement.centerY + height / 2 >= Double(canvas.height)
     }
 
     /// Moves a crop's top-left corner back onto the JPEG block grid, keeping

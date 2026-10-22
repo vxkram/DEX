@@ -29,6 +29,8 @@ enum Compositor {
         switch composition {
         case .layers:
             canvas = baseSize
+        case .canvas(let page):
+            canvas = page.size
         case .arrangement(let arrangement):
             let sizes = arrangement.ordered(base: baseSize, others: extras.map { PixelSize(width: $0.width, height: $0.height) })
             let layout = ArrangementLayout.layout(sizes, arrangement)
@@ -58,24 +60,41 @@ enum Compositor {
             CGRect(x: r.x, y: Int(height) - r.maxY, width: r.width, height: r.height)
         }
 
+        // An image drawn at a placement: moved, scaled about its centre, turned.
+        func place(_ image: CGImage, _ placement: LayerPlacement, height drawnHeight: Double) {
+            context.saveGState()
+            context.translateBy(x: placement.centerX, y: height - placement.centerY)
+            context.rotate(by: -placement.rotation * .pi / 180)
+            context.setAlpha(min(max(placement.opacity, 0), 1))
+            context.draw(image, in: CGRect(x: -placement.width / 2, y: -drawnHeight / 2, width: placement.width, height: drawnHeight))
+            context.restoreGState()
+        }
+        func fill(_ background: Arrangement.Background) {
+            if case .color(let red, let green, let blue) = background,
+               let color = CGColor(colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, components: [red, green, blue, 1]) {
+                context.setFillColor(color)
+                context.fill(CGRect(x: 0, y: 0, width: canvas.width, height: canvas.height))
+            }
+        }
+
         switch composition {
         case .layers(let layers):
             context.draw(base, in: rect(PixelRect(x: 0, y: 0, width: canvas.width, height: canvas.height)))
             for (layer, image) in zip(layers, extras) {
                 try token.check()
-                context.saveGState()
-                context.translateBy(x: layer.centerX, y: height - layer.centerY)
-                context.rotate(by: -layer.rotation * .pi / 180)
-                context.setAlpha(min(max(layer.opacity, 0), 1))
-                context.draw(image, in: CGRect(x: -layer.width / 2, y: -layer.height / 2, width: layer.width, height: layer.height))
-                context.restoreGState()
+                place(image, layer.placement, height: layer.height)
             }
+        case .canvas(let page):
+            fill(page.background)
+            let baseHeight = page.base.width * Double(base.height) / Double(max(base.width, 1))
+            for (index, (layer, image)) in zip(page.layers, extras).enumerated() {
+                try token.check()
+                if index == page.clampedBasePosition { place(base, page.base, height: baseHeight) }
+                place(image, layer.placement, height: layer.height)
+            }
+            if page.clampedBasePosition == page.layers.count { place(base, page.base, height: baseHeight) }
         case .arrangement(let arrangement):
-            if case .color(let red, let green, let blue) = arrangement.background,
-               let color = CGColor(colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!, components: [red, green, blue, 1]) {
-                context.setFillColor(color)
-                context.fill(CGRect(x: 0, y: 0, width: canvas.width, height: canvas.height))
-            }
+            fill(arrangement.background)
             for (image, frame) in zip(inputs, frames) {
                 try token.check()
                 context.draw(image, in: rect(frame))

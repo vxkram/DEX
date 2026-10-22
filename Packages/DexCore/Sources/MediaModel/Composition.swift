@@ -15,11 +15,11 @@ public struct ComposedImage: Codable, Sendable, Equatable, Hashable {
     public func hash(into hasher: inout Hasher) { hasher.combine(url) }
 }
 
-/// One image placed on top of the base, in canvas pixels.
-public struct OverlayLayer: Codable, Sendable, Equatable, Identifiable {
-    public var id: UUID
-    public var image: ComposedImage
-    /// Centre of the layer on the canvas.
+/// Where an image is drawn on a canvas, in canvas pixels. Shared by
+/// overlay layers and the base on a free canvas, so both move, scale and
+/// turn the same way.
+public struct LayerPlacement: Codable, Sendable, Equatable {
+    /// Centre on the canvas.
     public var centerX: Double
     public var centerY: Double
     /// Drawn width; height follows the image's aspect ratio.
@@ -29,10 +29,7 @@ public struct OverlayLayer: Codable, Sendable, Equatable, Identifiable {
     /// 0 (invisible) to 1 (opaque).
     public var opacity: Double
 
-    public init(id: UUID = UUID(), image: ComposedImage, centerX: Double, centerY: Double,
-                width: Double, rotation: Double = 0, opacity: Double = 1) {
-        self.id = id
-        self.image = image
+    public init(centerX: Double, centerY: Double, width: Double, rotation: Double = 0, opacity: Double = 1) {
         self.centerX = centerX
         self.centerY = centerY
         self.width = width
@@ -40,27 +37,96 @@ public struct OverlayLayer: Codable, Sendable, Equatable, Identifiable {
         self.opacity = opacity
     }
 
+    /// Whether an image `native` pixels in size is drawn at another size.
+    public func isResampled(native: PixelSize) -> Bool {
+        Int(width.rounded()) != native.width || rotation.truncatingRemainder(dividingBy: 90) != 0
+    }
+
+    /// Centred on `canvas`, as large as fits but never beyond `native`.
+    public static func fitted(_ native: PixelSize, on canvas: PixelSize, fraction: Double = 1) -> LayerPlacement {
+        let aspect = Double(native.width) / Double(max(native.height, 1))
+        let fitWidth = min(Double(canvas.width) * fraction, Double(canvas.height) * fraction * aspect)
+        return LayerPlacement(centerX: Double(canvas.width) / 2, centerY: Double(canvas.height) / 2,
+                              width: max(min(Double(native.width), fitWidth).rounded(), 1))
+    }
+
+    /// The same spot on a canvas of another size: centres move in
+    /// proportion, sizes scale by the smaller factor so nothing stretches.
+    public func moved(from old: PixelSize, to new: PixelSize) -> LayerPlacement {
+        var result = self
+        let sx = Double(new.width) / Double(max(old.width, 1)), sy = Double(new.height) / Double(max(old.height, 1))
+        result.centerX = (centerX * sx).rounded()
+        result.centerY = (centerY * sy).rounded()
+        result.width = max((width * min(sx, sy)).rounded(), 1)
+        return result
+    }
+}
+
+/// One image placed on top of the base, in canvas pixels.
+@dynamicMemberLookup
+public struct OverlayLayer: Codable, Sendable, Equatable, Identifiable {
+    public var id: UUID
+    public var image: ComposedImage
+    public var placement: LayerPlacement
+
+    public init(id: UUID = UUID(), image: ComposedImage, centerX: Double, centerY: Double,
+                width: Double, rotation: Double = 0, opacity: Double = 1) {
+        self.id = id
+        self.image = image
+        self.placement = LayerPlacement(centerX: centerX, centerY: centerY, width: width, rotation: rotation, opacity: opacity)
+    }
+
+    public init(id: UUID = UUID(), image: ComposedImage, placement: LayerPlacement) {
+        self.id = id
+        self.image = image
+        self.placement = placement
+    }
+
+    /// `layer.centerX` and friends read and write the placement.
+    public subscript<T>(dynamicMember path: WritableKeyPath<LayerPlacement, T>) -> T {
+        get { placement[keyPath: path] }
+        set { placement[keyPath: path] = newValue }
+    }
+
     public var aspectRatio: Double {
         let size = image.info.displaySize
         return Double(size.width) / Double(max(size.height, 1))
     }
 
-    public var height: Double { width / aspectRatio }
+    public var height: Double { placement.width / aspectRatio }
 
     /// Whether the layer is drawn at a size other than its own pixels.
-    public var isResampled: Bool {
-        Int(width.rounded()) != image.info.displaySize.width || rotation.truncatingRemainder(dividingBy: 90) != 0
-    }
+    public var isResampled: Bool { placement.isResampled(native: image.info.displaySize) }
 
     /// A layer that fits inside `canvas` at up to `fraction` of its width,
     /// centred, never enlarged beyond its own pixels.
     public static func placed(_ image: ComposedImage, on canvas: PixelSize, fraction: Double = 0.4) -> OverlayLayer {
-        let native = Double(image.info.displaySize.width)
-        let aspect = Double(image.info.displaySize.width) / Double(max(image.info.displaySize.height, 1))
-        let fitWidth = min(Double(canvas.width) * fraction, Double(canvas.height) * fraction * aspect)
-        return OverlayLayer(image: image, centerX: Double(canvas.width) / 2, centerY: Double(canvas.height) / 2,
-                            width: min(native, fitWidth).rounded())
+        OverlayLayer(image: image, placement: .fitted(image.info.displaySize, on: canvas, fraction: fraction))
     }
+}
+
+/// A free page of any size: the base and any added images, each moved,
+/// scaled and turned on its own, over a background.
+public struct Canvas: Codable, Sendable, Equatable {
+    public var size: PixelSize
+    public var background: Arrangement.Background
+    /// The opened image, after its own crop and Fit.
+    public var base: LayerPlacement
+    /// Added images, bottom to top.
+    public var layers: [OverlayLayer]
+    /// The base's place in the stacking order; 0 = at the bottom.
+    public var basePosition: Int
+
+    public init(size: PixelSize, background: Arrangement.Background = .white, base: LayerPlacement,
+                layers: [OverlayLayer] = [], basePosition: Int = 0) {
+        self.size = size
+        self.background = background
+        self.base = base
+        self.layers = layers
+        self.basePosition = basePosition
+    }
+
+    public var clampedBasePosition: Int { min(max(basePosition, 0), layers.count) }
 }
 
 /// Several images joined into one picture.
@@ -128,15 +194,22 @@ public enum Composition: Codable, Sendable, Equatable {
     case layers([OverlayLayer])
     /// The base and more images joined into one picture.
     case arrangement(Arrangement)
+    /// The base and more images placed freely on a page of any size.
+    case canvas(Canvas)
 
     public var extraImages: [ComposedImage] {
         switch self {
         case .layers(let layers): layers.map(\.image)
         case .arrangement(let arrangement): arrangement.images
+        case .canvas(let canvas): canvas.layers.map(\.image)
         }
     }
 
-    public var isEmpty: Bool { extraImages.isEmpty }
+    /// Nothing to combine. A canvas always changes the picture, even alone.
+    public var isEmpty: Bool {
+        if case .canvas = self { return false }
+        return extraImages.isEmpty
+    }
 }
 
 /// Where each image goes in an arrangement. Pure, so the planner, the

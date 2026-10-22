@@ -89,6 +89,13 @@ final class ImageDocument {
     /// Where the opened image sits among the arranged images.
     var basePosition = 0
     var selectedLayerID: UUID?
+    /// Canvas: the page size, where the opened image sits on it, and its
+    /// place among the layers (0 = bottom).
+    private(set) var canvasSize = PixelSize(width: 1080, height: 1080)
+    var basePlacement = LayerPlacement(centerX: 540, centerY: 540, width: 1080)
+    var canvasBasePosition = 0
+    /// The opened image is the selected item on the canvas.
+    var isBaseSelected = false
     /// Small previews of added images, for the canvas and the list.
     private(set) var extraPreviews: [URL: PreviewImage] = [:]
     /// Why an added image couldn't be used, if one couldn't.
@@ -188,7 +195,59 @@ final class ImageDocument {
             return layers.isEmpty ? nil : .layers(layers)
         case .horizontal, .vertical, .grid:
             return arrangedImages.isEmpty ? nil : .arrangement(arrangement)
+        case .canvas:
+            return .canvas(canvas)
         }
+    }
+
+    var canvas: Canvas {
+        Canvas(size: canvasSize, background: background, base: basePlacement, layers: layers,
+               basePosition: canvasBasePosition)
+    }
+
+    /// What layers are placed on: the page in Canvas, otherwise the photo.
+    var layerCanvasSize: PixelSize? { composeMode == .canvas ? canvasSize : framedSize }
+
+    /// A new page size: the opened image is fitted again, layers keep
+    /// their place in proportion.
+    func setCanvasSize(_ size: PixelSize) {
+        let size = PixelSize(width: min(max(size.width, 16), 16_000), height: min(max(size.height, 16), 16_000))
+        let old = canvasSize
+        canvasSize = size
+        if let base = framedSize { basePlacement = .fitted(base, on: size) }
+        for index in layers.indices { layers[index].placement = layers[index].placement.moved(from: old, to: size) }
+    }
+
+    /// Canvas items bottom to top: nil is the opened image.
+    var canvasOrder: [UUID?] {
+        var order: [UUID?] = layers.map(\.id)
+        order.insert(nil, at: min(max(canvasBasePosition, 0), layers.count))
+        return order
+    }
+
+    /// Moves a canvas item (the opened image or a layer) down or up.
+    func moveCanvasItem(at index: Int, by offset: Int) {
+        var order = canvasOrder
+        let target = index + offset
+        guard order.indices.contains(index), order.indices.contains(target) else { return }
+        order.swapAt(index, target)
+        canvasBasePosition = order.firstIndex { $0 == nil } ?? 0
+        let byID = Dictionary(uniqueKeysWithValues: layers.map { ($0.id, $0) })
+        layers = order.compactMap { $0.flatMap { byID[$0] } }
+    }
+
+    func updateBase(_ change: (inout LayerPlacement) -> Void) {
+        change(&basePlacement)
+    }
+
+    func selectLayer(_ id: UUID?) {
+        selectedLayerID = id
+        isBaseSelected = false
+    }
+
+    func selectBase() {
+        selectedLayerID = nil
+        isBaseSelected = true
     }
 
     var arrangement: Arrangement {
@@ -203,7 +262,7 @@ final class ImageDocument {
 
     /// Images the user has added, in the current mode.
     var composedImages: [ComposedImage] {
-        composeMode == .layers ? layers.map(\.image) : arrangedImages
+        composeMode.isLayered ? layers.map(\.image) : arrangedImages
     }
 
     func presentAddImagesPanel() {
@@ -231,10 +290,10 @@ final class ImageDocument {
             }
             let image = ComposedImage(url: url, info: info)
             guard !composedImages.contains(image) else { continue }
-            if composeMode == .layers {
-                let layer = OverlayLayer.placed(image, on: framedSize ?? info.displaySize)
+            if composeMode.isLayered {
+                let layer = OverlayLayer.placed(image, on: layerCanvasSize ?? info.displaySize)
                 layers.append(layer)
-                selectedLayerID = layer.id
+                selectLayer(layer.id)
             } else {
                 arrangedImages.append(image)
             }
@@ -264,6 +323,7 @@ final class ImageDocument {
     }
 
     func removeImage(_ image: ComposedImage) {
+        if let index = layers.firstIndex(where: { $0.image == image }), index < canvasBasePosition { canvasBasePosition -= 1 }
         layers.removeAll { $0.image == image }
         if let index = arrangedImages.firstIndex(of: image), index < basePosition { basePosition -= 1 }
         arrangedImages.removeAll { $0 == image }
@@ -280,18 +340,29 @@ final class ImageDocument {
         layers.swapAt(index, target)
     }
 
-    /// Switching between layers and arrangements carries the images over.
+    /// Switching modes carries the images over. Canvas starts as a page
+    /// the size of the photo, with the photo filling it.
     func setComposeMode(_ mode: ComposeMode) {
+        guard mode != composeMode else { return }
         let images = composedImages
-        let wasLayers = composeMode == .layers
+        let wasLayered = composeMode.isLayered
+        let oldCanvas = layerCanvasSize
+        if mode == .canvas, let base = framedSize {
+            canvasSize = base
+            basePlacement = .fitted(base, on: base)
+            canvasBasePosition = 0
+        }
         composeMode = mode
-        if wasLayers && mode != .layers {
+        isBaseSelected = false
+        if wasLayered && !mode.isLayered {
             arrangedImages = images
             basePosition = 0
-        } else if !wasLayers && mode == .layers {
-            let canvas = framedSize ?? PixelSize(width: 1, height: 1)
+        } else if !wasLayered && mode.isLayered {
+            let canvas = layerCanvasSize ?? PixelSize(width: 1, height: 1)
             layers = images.map { OverlayLayer.placed($0, on: canvas) }
             selectedLayerID = layers.last?.id
+        } else if let oldCanvas, let canvas = layerCanvasSize, oldCanvas != canvas {
+            for index in layers.indices { layers[index].placement = layers[index].placement.moved(from: oldCanvas, to: canvas) }
         }
         gridColumns = min(gridColumns, maxGridColumns)
     }
@@ -310,6 +381,9 @@ final class ImageDocument {
         pdfImages = []
         basePosition = 0
         selectedLayerID = nil
+        composeMode = .layers
+        canvasBasePosition = 0
+        isBaseSelected = false
     }
 
     func rotateClockwise() { geometry.rotateClockwise(); geometry.resize = nil }
@@ -747,7 +821,9 @@ final class ImageDocument {
         layers = []
         arrangedImages = []
         basePosition = 0
+        canvasBasePosition = 0
         selectedLayerID = nil
+        if composeMode == .canvas { composeMode = .layers }
         pdfImages = images + pdfImages.filter { !images.contains($0) }
     }
 
@@ -1015,9 +1091,12 @@ struct SizeEstimate: Equatable {
 }
 
 enum ComposeMode: String, CaseIterable, Identifiable {
-    case layers, horizontal, vertical, grid
+    case layers, horizontal, vertical, grid, canvas
 
     var id: Self { self }
+
+    /// Images are placed freely (moved, scaled, turned) rather than laid out.
+    var isLayered: Bool { self == .layers || self == .canvas }
 
     var title: String {
         switch self {
@@ -1025,6 +1104,7 @@ enum ComposeMode: String, CaseIterable, Identifiable {
         case .horizontal: "Side by side"
         case .vertical: "Stacked"
         case .grid: "Grid"
+        case .canvas: "Canvas"
         }
     }
 
@@ -1034,6 +1114,7 @@ enum ComposeMode: String, CaseIterable, Identifiable {
         case .horizontal: "rectangle.split.2x1"
         case .vertical: "rectangle.split.1x2"
         case .grid: "square.grid.2x2"
+        case .canvas: "rectangle.on.rectangle.angled"
         }
     }
 }

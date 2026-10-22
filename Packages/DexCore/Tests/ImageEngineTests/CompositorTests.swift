@@ -142,4 +142,34 @@ struct CompositorTests {
         let info = try ImageEngine.inspect(url: output)
         #expect(info.pixelWidth == 100 && info.pixelHeight == 50)
     }
+
+    @Test func canvasPlacesTheBaseAndTurnsALayer() async throws {
+        defer { fixtures.cleanUp() }
+        let base = try await solid(.png, "base", 100, 50, (1, 0, 0))
+        let bar = try await solid(.png, "bar", 80, 10, (0, 0, 1))
+        // Base in the top-left quarter; a bar turned upright on the right.
+        let page = Canvas(size: PixelSize(width: 200, height: 200), background: .black,
+                          base: LayerPlacement(centerX: 50, centerY: 25, width: 100),
+                          layers: [OverlayLayer(image: try composed(bar), centerX: 150, centerY: 100, width: 80, rotation: 90)])
+        let (output, _) = try await run(base, ConvertRequest(target: .png, composition: .canvas(page)))
+        let info = try ImageEngine.inspect(url: output)
+        #expect(info.pixelWidth == 200 && info.pixelHeight == 200)
+        #expect(close(try color(output, x: 50, y: 25), (255, 0, 0)))     // the base
+        #expect(close(try color(output, x: 50, y: 150), (0, 0, 0)))      // background
+        #expect(close(try color(output, x: 150, y: 70), (0, 0, 255)))    // the turned bar, vertical now
+        #expect(close(try color(output, x: 130, y: 100), (0, 0, 0)))     // beside it
+    }
+
+    @Test func canvasStacksTheBaseWhereAsked() async throws {
+        defer { fixtures.cleanUp() }
+        let base = try await solid(.png, "base", 100, 100, (1, 0, 0))
+        let cover = try await solid(.png, "cover", 100, 100, (0, 1, 0))
+        var page = Canvas(size: PixelSize(width: 100, height: 100), base: LayerPlacement(centerX: 50, centerY: 50, width: 100),
+                          layers: [OverlayLayer(image: try composed(cover), centerX: 50, centerY: 50, width: 100)])
+        let (below, _) = try await run(base, ConvertRequest(target: .png, composition: .canvas(page)))
+        #expect(close(try color(below, x: 50, y: 50), (0, 255, 0)))
+        page.basePosition = 1
+        let (above, _) = try await run(base, ConvertRequest(target: .png, composition: .canvas(page)))
+        #expect(close(try color(above, x: 50, y: 50), (255, 0, 0)))
+    }
 }

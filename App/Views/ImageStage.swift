@@ -208,20 +208,38 @@ private struct CompositeStage: View {
 
             ZStack(alignment: .topLeading) {
                 backgroundView
-                // The (rotated, cropped) base.
-                // In "match sizes" arrangements the base itself may be scaled.
-                let baseScale = scale * CGFloat(layout.frames[baseIndex].width) / CGFloat(base.width)
-                let baseFrame = layout.frames[baseIndex]
-                EditedBase(preview: preview, orientation: document.geometry.orientation, display: display, crop: crop,
-                           frame: document.geometry.frame, opaque: !document.target.supportsAlpha, scale: baseScale)
-                    .frame(width: CGFloat(baseFrame.width) * scale, height: CGFloat(baseFrame.height) * scale)
-                    .offset(x: CGFloat(baseFrame.x) * scale, y: CGFloat(baseFrame.y) * scale)
+                if document.composeMode == .canvas {
+                    // Bottom to top, the opened image among the layers.
+                    ForEach(document.canvasOrder, id: \.self) { id in
+                        if let id, let layer = document.layers.first(where: { $0.id == id }) {
+                            LayerView(document: document, layer: layer, scale: scale, isEditable: document.tool == .compose)
+                        } else if id == nil {
+                            let placement = document.basePlacement
+                            PlacedItem(placement: placement, aspectRatio: Double(base.width) / Double(max(base.height, 1)),
+                                       scale: scale, isEditable: document.tool == .compose, isSelected: document.isBaseSelected,
+                                       select: { document.selectBase() }, update: { document.updateBase($0) }) {
+                                EditedBase(preview: preview, orientation: document.geometry.orientation, display: display, crop: crop,
+                                           frame: document.geometry.frame, opaque: !document.target.supportsAlpha,
+                                           scale: scale * placement.width / CGFloat(base.width))
+                            }
+                        }
+                    }
+                } else {
+                    // The (rotated, cropped) base.
+                    // In "match sizes" arrangements the base itself may be scaled.
+                    let baseScale = scale * CGFloat(layout.frames[baseIndex].width) / CGFloat(base.width)
+                    let baseFrame = layout.frames[baseIndex]
+                    EditedBase(preview: preview, orientation: document.geometry.orientation, display: display, crop: crop,
+                               frame: document.geometry.frame, opaque: !document.target.supportsAlpha, scale: baseScale)
+                        .frame(width: CGFloat(baseFrame.width) * scale, height: CGFloat(baseFrame.height) * scale)
+                        .offset(x: CGFloat(baseFrame.x) * scale, y: CGFloat(baseFrame.y) * scale)
+                }
 
                 if document.composeMode == .layers {
                     ForEach(document.layers) { layer in
                         LayerView(document: document, layer: layer, scale: scale, isEditable: document.tool == .compose)
                     }
-                } else {
+                } else if document.composeMode != .canvas {
                     ForEach(Array(document.arrangedImages.enumerated()), id: \.element.url) { index, image in
                         let frame = layout.frames[index < baseIndex ? index : index + 1]
                         Group {
@@ -244,10 +262,13 @@ private struct CompositeStage: View {
     }
 
     private var baseIndex: Int {
-        document.composeMode == .layers ? 0 : document.arrangement.clampedBasePosition
+        document.composeMode.isLayered ? 0 : document.arrangement.clampedBasePosition
     }
 
     private func canvasLayout(base: PixelSize) -> ArrangementLayout.Result {
+        if document.composeMode == .canvas {
+            return ArrangementLayout.Result(canvas: document.canvasSize, frames: [])
+        }
         if document.composeMode == .layers {
             return ArrangementLayout.Result(canvas: base, frames: [PixelRect(x: 0, y: 0, width: base.width, height: base.height)])
         }
@@ -331,52 +352,73 @@ struct EditedBase: View {
 
 /// One overlay layer: drag to move, drag the corner to resize.
 private struct LayerView: View {
-    @Bindable var document: ImageDocument
+    let document: ImageDocument
     let layer: OverlayLayer
     let scale: CGFloat
     let isEditable: Bool
 
-    @State private var moveStart: CGPoint?
-    @State private var resizeStart: Double?
-
     var body: some View {
-        let isSelected = isEditable && document.selectedLayerID == layer.id
-        let size = CGSize(width: layer.width * scale, height: layer.height * scale)
-        Group {
+        PlacedItem(placement: layer.placement, aspectRatio: layer.aspectRatio, scale: scale, isEditable: isEditable,
+                   isSelected: document.selectedLayerID == layer.id && !document.isBaseSelected,
+                   select: { document.selectLayer(layer.id) },
+                   update: { change in document.updateLayer(layer.id) { change(&$0.placement) } }) {
             if let preview = document.extraPreviews[layer.image.url] {
                 Image(decorative: preview.cgImage, scale: 1).resizable().interpolation(.high)
             } else {
                 Rectangle().fill(.white.opacity(0.15))
             }
         }
-        .frame(width: size.width, height: size.height)
-        .opacity(layer.opacity)
-        .overlay {
-            if isSelected {
-                Rectangle().strokeBorder(Theme.ember, lineWidth: 1.5)
-                    .overlay(alignment: .bottomTrailing) {
-                        Circle().fill(.white).frame(width: 14, height: 14)
-                            .shadow(color: .black.opacity(0.4), radius: 2)
-                            .offset(x: 7, y: 7)
-                            .gesture(resize)
-                    }
+    }
+}
+
+/// Anything placed on a canvas: drawn at its placement, dragged to move,
+/// its corner dragged to resize about the centre.
+private struct PlacedItem<Content: View>: View {
+    let placement: LayerPlacement
+    /// Width / height of what is drawn.
+    let aspectRatio: Double
+    let scale: CGFloat
+    let isEditable: Bool
+    let isSelected: Bool
+    let select: () -> Void
+    let update: ((inout LayerPlacement) -> Void) -> Void
+    @ViewBuilder let content: Content
+
+    @State private var moveStart: CGPoint?
+    @State private var resizeStart: Double?
+
+    var body: some View {
+        let isSelected = isEditable && isSelected
+        let size = CGSize(width: placement.width * scale, height: placement.width / aspectRatio * scale)
+        content
+            .frame(width: size.width, height: size.height)
+            .opacity(placement.opacity)
+            .overlay {
+                if isSelected {
+                    Rectangle().strokeBorder(Theme.ember, lineWidth: 1.5)
+                        .overlay(alignment: .bottomTrailing) {
+                            Circle().fill(.white).frame(width: 14, height: 14)
+                                .shadow(color: .black.opacity(0.4), radius: 2)
+                                .offset(x: 7, y: 7)
+                                .gesture(resize)
+                        }
+                }
             }
-        }
-        .rotationEffect(.degrees(layer.rotation))
-        .position(x: layer.centerX * scale, y: layer.centerY * scale)
-        .gesture(isEditable ? move : nil)
-        .onTapGesture { if isEditable { document.selectedLayerID = layer.id } }
+            .rotationEffect(.degrees(placement.rotation))
+            .position(x: placement.centerX * scale, y: placement.centerY * scale)
+            .gesture(isEditable ? move : nil)
+            .onTapGesture { if isEditable { select() } }
     }
 
     private var move: some Gesture {
         DragGesture(minimumDistance: 1)
             .onChanged { value in
-                let start = moveStart ?? CGPoint(x: layer.centerX, y: layer.centerY)
+                let start = moveStart ?? CGPoint(x: placement.centerX, y: placement.centerY)
                 if moveStart == nil {
                     moveStart = start
-                    document.selectedLayerID = layer.id
+                    select()
                 }
-                document.updateLayer(layer.id) {
+                update {
                     $0.centerX = (start.x + value.translation.width / scale).rounded()
                     $0.centerY = (start.y + value.translation.height / scale).rounded()
                 }
@@ -387,11 +429,11 @@ private struct LayerView: View {
     private var resize: some Gesture {
         DragGesture(minimumDistance: 1)
             .onChanged { value in
-                let start = resizeStart ?? layer.width
+                let start = resizeStart ?? placement.width
                 if resizeStart == nil { resizeStart = start }
-                // Dragging the corner outwards grows the layer about its centre.
-                let delta = max(value.translation.width, value.translation.height * layer.aspectRatio) * 2 / scale
-                document.updateLayer(layer.id) { $0.width = max(16, (start + delta).rounded()) }
+                // Dragging the corner outwards grows the item about its centre.
+                let delta = max(value.translation.width, value.translation.height * aspectRatio) * 2 / scale
+                update { $0.width = max(16, (start + delta).rounded()) }
             }
             .onEnded { _ in resizeStart = nil }
     }

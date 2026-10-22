@@ -3,7 +3,7 @@ import MediaModel
 import SwiftUI
 
 /// Combine this image with others of any format: layered on top, side by
-/// side, stacked or in a grid.
+/// side, stacked, in a grid, or placed freely on a page of any size.
 struct ComposePanel: View {
     @Bindable var document: ImageDocument
 
@@ -11,7 +11,7 @@ struct ComposePanel: View {
         ToolPanelBody(document: document) {
             VStack(spacing: 10) {
                 PanelSectionHeader("Layout")
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 5), spacing: 5) {
                     ForEach(ComposeMode.allCases) { mode in
                         ModeButton(mode: mode, isSelected: document.composeMode == mode) {
                             document.setComposeMode(mode)
@@ -20,11 +20,24 @@ struct ComposePanel: View {
                 }
             }
 
+            if document.composeMode == .canvas {
+                CanvasSizeSection(document: document)
+            }
+
             ImageList(document: document)
 
-            if document.composeMode == .layers {
-                if let id = document.selectedLayerID, let layer = document.layers.first(where: { $0.id == id }) {
-                    LayerControls(document: document, layer: layer)
+            if document.composeMode.isLayered {
+                let canvas = document.layerCanvasSize ?? PixelSize(width: 1, height: 1)
+                if document.isBaseSelected, let base = document.framedSize, let info = document.info {
+                    LayerControls(title: "Selected: \(info.fileName)", placement: document.basePlacement, native: base,
+                                  canvas: canvas) { change in document.updateBase(change) }
+                } else if let id = document.selectedLayerID, let layer = document.layers.first(where: { $0.id == id }) {
+                    LayerControls(title: "Selected layer", placement: layer.placement, native: layer.image.info.displaySize,
+                                  canvas: canvas) { change in document.updateLayer(id) { change(&$0.placement) } }
+                }
+                if document.composeMode == .canvas {
+                    BackgroundPicker(document: document,
+                                     explanation: "Shows wherever the images don't cover the page. \"None\" is transparent (PNG, WebP, HEIC, TIFF).")
                 }
             } else if !document.arrangedImages.isEmpty {
                 ArrangementControls(document: document)
@@ -46,7 +59,7 @@ private struct ModeButton: View {
         Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: mode.symbol).font(.system(size: 15, weight: .medium))
-                Text(mode.title).font(.caption2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8)
+                Text(mode.title).font(.caption2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.7)
             }
             .frame(maxWidth: .infinity, minHeight: 48)
             .foregroundStyle(isSelected ? .white : .primary)
@@ -66,8 +79,26 @@ private struct ImageList: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            PanelSectionHeader(document.composeMode == .layers ? "Layers (bottom to top)" : "Images (in order)")
-            if document.composeMode == .layers {
+            PanelSectionHeader(document.composeMode.isLayered ? "Layers (bottom to top)" : "Images (in order)")
+            if document.composeMode == .canvas {
+                // Every item, the opened image included, can be restacked.
+                let order = document.canvasOrder
+                ForEach(Array(order.enumerated()), id: \.offset) { index, id in
+                    let up: (() -> Void)? = index > 0 ? { document.moveCanvasItem(at: index, by: -1) } : nil
+                    let down: (() -> Void)? = index < order.count - 1 ? { document.moveCanvasItem(at: index, by: 1) } : nil
+                    if let id, let layer = document.layers.first(where: { $0.id == id }) {
+                        let image = layer.image
+                        Row(name: image.info.fileName, format: image.info.format, size: image.info.displaySize,
+                            preview: document.extraPreviews[image.url], isSelected: id == document.selectedLayerID,
+                            moveUp: up, moveDown: down, remove: { document.removeImage(image) })
+                            .onTapGesture { document.selectLayer(id) }
+                    } else if id == nil, let info = document.info {
+                        Row(name: info.fileName, format: info.format, size: info.displaySize, preview: document.preview,
+                            badge: "opened", isSelected: document.isBaseSelected, moveUp: up, moveDown: down)
+                            .onTapGesture { document.selectBase() }
+                    }
+                }
+            } else if document.composeMode == .layers {
                 // The opened image is the canvas: always at the bottom.
                 if let info = document.info {
                     Row(name: info.fileName, format: info.format, size: info.displaySize, preview: document.preview,
@@ -80,7 +111,7 @@ private struct ImageList: View {
                         moveUp: index > 0 ? { document.moveLayer(at: index, by: -1) } : nil,
                         moveDown: index < document.layers.count - 1 ? { document.moveLayer(at: index, by: 1) } : nil,
                         remove: { document.removeImage(image) })
-                        .onTapGesture { document.selectedLayerID = layer.id }
+                        .onTapGesture { document.selectLayer(layer.id) }
                 }
             } else {
                 // Every image, the opened one included, can be reordered.
@@ -175,45 +206,49 @@ private struct ImageList: View {
 // MARK: - Layer controls
 
 private struct LayerControls: View {
-    let document: ImageDocument
-    let layer: OverlayLayer
+    let title: String
+    let placement: LayerPlacement
+    /// The image's own size; its drawn height follows this aspect ratio.
+    let native: PixelSize
+    let canvas: PixelSize
+    let update: @MainActor ((inout LayerPlacement) -> Void) -> Void
 
     var body: some View {
-        let canvas = document.framedSize ?? PixelSize(width: 1, height: 1)
+        let height = placement.width * Double(native.height) / Double(max(native.width, 1))
         VStack(alignment: .leading, spacing: 14) {
-            PanelSectionHeader("Selected layer")
-            Explanation("Drag it on the photo to move it; drag its corner to resize.")
+            PanelSectionHeader(title)
+            Explanation("Drag it on the picture to move it; drag its corner to resize.")
 
-            LabeledSlider(title: "Size", value: layer.width, range: 16...Double(canvas.width) * 1.5,
-                          display: "\(Int(layer.width.rounded())) × \(Int(layer.height.rounded()))") { width in
-                document.updateLayer(layer.id) { $0.width = width.rounded() }
+            LabeledSlider(title: "Size", value: placement.width, range: 16...Double(max(canvas.width, native.width)) * 1.5,
+                          display: "\(Int(placement.width.rounded())) × \(Int(height.rounded()))") { width in
+                update { $0.width = width.rounded() }
             }
-            Button("Original size (\(layer.image.info.displaySize.width) px wide)") {
-                document.updateLayer(layer.id) { $0.width = Double($0.image.info.displaySize.width) }
+            Button("Original size (\(native.width) px wide)") {
+                update { $0.width = Double(native.width) }
             }
             .buttonStyle(.link)
             .tint(Theme.ember)
             .font(.caption)
 
-            LabeledSlider(title: "Opacity", value: layer.opacity, range: 0...1,
-                          display: "\(Int((layer.opacity * 100).rounded()))%") { opacity in
-                document.updateLayer(layer.id) { $0.opacity = opacity }
+            LabeledSlider(title: "Opacity", value: placement.opacity, range: 0...1,
+                          display: "\(Int((placement.opacity * 100).rounded()))%") { opacity in
+                update { $0.opacity = opacity }
             }
-            LabeledSlider(title: "Rotation", value: layer.rotation, range: -180...180,
-                          display: "\(Int(layer.rotation.rounded()))°") { rotation in
+            LabeledSlider(title: "Rotation", value: placement.rotation, range: -180...180,
+                          display: "\(Int(placement.rotation.rounded()))°") { rotation in
                 // Snap to right angles when close.
                 let snapped = (rotation / 90).rounded() * 90
-                document.updateLayer(layer.id) { $0.rotation = abs(snapped - rotation) < 3 ? snapped : rotation.rounded() }
+                update { $0.rotation = abs(snapped - rotation) < 3 ? snapped : rotation.rounded() }
             }
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Position").font(.callout)
                 AnchorGrid { column, row in
                     let margin = Double(min(canvas.width, canvas.height)) * 0.04
-                    let halfW = layer.width / 2, halfH = layer.height / 2
+                    let halfW = placement.width / 2, halfH = height / 2
                     let xs = [margin + halfW, Double(canvas.width) / 2, Double(canvas.width) - margin - halfW]
                     let ys = [margin + halfH, Double(canvas.height) / 2, Double(canvas.height) - margin - halfH]
-                    document.updateLayer(layer.id) { $0.centerX = xs[column].rounded(); $0.centerY = ys[row].rounded() }
+                    update { $0.centerX = xs[column].rounded(); $0.centerY = ys[row].rounded() }
                 }
             }
         }
@@ -305,17 +340,27 @@ private struct ArrangementControls: View {
                 document.spacing = Int($0.rounded())
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Background").font(.callout)
-                HStack(spacing: 6) {
-                    Chip(title: "White", isSelected: document.background == .white) { document.background = .white }
-                    Chip(title: "Black", isSelected: document.background == .black) { document.background = .black }
-                    Chip(title: "None", isSelected: document.background == .transparent) { document.background = .transparent }
-                    ColorPicker("Custom", selection: customColor, supportsOpacity: false)
-                        .labelsHidden()
-                }
-                Explanation("Shows in gaps and around images of different sizes. \"None\" is transparent (PNG, WebP, HEIC, TIFF).")
+            BackgroundPicker(document: document,
+                             explanation: "Shows in gaps and around images of different sizes. \"None\" is transparent (PNG, WebP, HEIC, TIFF).")
+        }
+    }
+}
+
+private struct BackgroundPicker: View {
+    @Bindable var document: ImageDocument
+    let explanation: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Background").font(.callout)
+            HStack(spacing: 6) {
+                Chip(title: "White", isSelected: document.background == .white) { document.background = .white }
+                Chip(title: "Black", isSelected: document.background == .black) { document.background = .black }
+                Chip(title: "None", isSelected: document.background == .transparent) { document.background = .transparent }
+                ColorPicker("Custom", selection: customColor, supportsOpacity: false)
+                    .labelsHidden()
             }
+            Explanation(explanation)
         }
     }
 
@@ -330,5 +375,40 @@ private struct ArrangementControls: View {
                 document.background = .color(red: resolved.redComponent, green: resolved.greenComponent, blue: resolved.blueComponent)
             }
         )
+    }
+}
+
+// MARK: - Canvas size
+
+private struct CanvasSizeSection: View {
+    let document: ImageDocument
+
+    private static let presets: [(title: String, detail: String, size: PixelSize?)] = [
+        ("Photo", "its own size", nil),
+        ("Square", "1080 × 1080", PixelSize(width: 1080, height: 1080)),
+        ("Story", "1080 × 1920", PixelSize(width: 1080, height: 1920)),
+        ("Wide", "1920 × 1080", PixelSize(width: 1920, height: 1080)),
+        ("A4", "2480 × 3508", PixelSize(width: 2480, height: 3508)),
+        ("Letter", "2550 × 3300", PixelSize(width: 2550, height: 3300)),
+    ]
+
+    var body: some View {
+        let size = document.canvasSize
+        VStack(alignment: .leading, spacing: 10) {
+            PanelSectionHeader("Page size")
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                ForEach(Self.presets, id: \.title) { preset in
+                    let target = preset.size ?? document.framedSize
+                    TwoLineChip(title: preset.title, subtitle: preset.detail, isSelected: target == size) {
+                        if let target { document.setCanvasSize(target) }
+                    }
+                }
+            }
+            HStack(spacing: 10) {
+                NumberField(label: "W", value: size.width) { document.setCanvasSize(PixelSize(width: $0, height: size.height)) }
+                NumberField(label: "H", value: size.height) { document.setCanvasSize(PixelSize(width: size.width, height: $0)) }
+            }
+            Explanation("Drag the images on the page to place them. A4 and Letter are 300 dpi, and save as true paper size when you choose PDF in Convert.")
+        }
     }
 }

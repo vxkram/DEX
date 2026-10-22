@@ -102,13 +102,14 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
     case cropSnapped(to: PixelRect)
     case optimisedLosslessly
     case composited(images: Int)
+    case placedOnCanvas(PixelSize, images: Int)
     case framed(to: PixelSize, background: Framing.Background)
     case locationRemoved
     case allMetadataRemoved
 
     public var isLoss: Bool {
         switch self {
-        case .noAdditionalLoss, .orientationApplied, .cropSnapped, .optimisedLosslessly, .composited, .framed,
+        case .noAdditionalLoss, .orientationApplied, .cropSnapped, .optimisedLosslessly, .composited, .placedOnCanvas, .framed,
              .locationRemoved, .allMetadataRemoved: false
         default: true
         }
@@ -148,6 +149,9 @@ public enum QualityNote: Codable, Sendable, Equatable, CustomStringConvertible {
             "HDR can't be kept when fitting to a new shape, so the result is SDR"
         case .framed(let size, let background):
             "Fitted on a \(size) canvas with \(background.phrase) around it; the photo's own pixels aren't resampled"
+        case .placedOnCanvas(let size, let count):
+            "Placed on a \(size) canvas" + (count == 0 ? ""
+                : " with \(count) more image\(count == 1 ? "" : "s"); formats don't matter, colours are matched")
         case .composited(let count):
             "Combines \(count + 1) images; formats don't matter, colours are matched"
         case .optimisedLosslessly:

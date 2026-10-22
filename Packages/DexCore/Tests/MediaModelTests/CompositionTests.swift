@@ -114,4 +114,42 @@ struct CompositionTests {
         let big = OverlayLayer.placed(image(.png, 3000, 1500), on: PixelSize(width: 1000, height: 1000))
         #expect(big.width == 400)
     }
+
+    // MARK: Canvas
+
+    @Test func canvasHasItsOwnSize() throws {
+        let page = Canvas(size: PixelSize(width: 1080, height: 1920), base: LayerPlacement(centerX: 540, centerY: 960, width: 1000))
+        let plan = try Planner.plan(info(.png, 1000, 500), ConvertRequest(target: .png, composition: .canvas(page)),
+                                    writable: Self.writable)
+        #expect(plan.expectedWidth == 1080 && plan.expectedHeight == 1920)
+        #expect(plan.notes.contains(.placedOnCanvas(PixelSize(width: 1080, height: 1920), images: 0)))
+        #expect(plan.verdict == .lossless, "the base is drawn at its own size")
+    }
+
+    @Test func canvasDisclosesEveryScaledItem() throws {
+        let logo = image(.png, 200, 100)
+        let page = Canvas(size: PixelSize(width: 2000, height: 2000), base: LayerPlacement(centerX: 1000, centerY: 1000, width: 2000),
+                          layers: [OverlayLayer(image: logo, centerX: 100, centerY: 100, width: 100)])
+        let plan = try Planner.plan(info(.jpeg, 1000, 500), ConvertRequest(target: .png, composition: .canvas(page)),
+                                    writable: Self.writable)
+        #expect(plan.notes.contains(.imageResampled(name: "jpeg.jpg", to: PixelSize(width: 2000, height: 1000))))
+        #expect(plan.notes.contains(.imageResampled(name: logo.info.fileName, to: PixelSize(width: 100, height: 50))))
+    }
+
+    @Test func transparentCanvasIsOnlyOpaqueWhenFilled() throws {
+        func plan(width: Double) throws -> ConversionPlan {
+            let page = Canvas(size: PixelSize(width: 400, height: 200), background: .transparent,
+                              base: LayerPlacement(centerX: 200, centerY: 100, width: width))
+            return try Planner.plan(info(.png, 400, 200), ConvertRequest(target: .jpeg, composition: .canvas(page)),
+                                    writable: Self.writable)
+        }
+        #expect(try plan(width: 300).notes.contains(.transparencyFlattened))
+        #expect(try !plan(width: 400).notes.contains(.transparencyFlattened))
+    }
+
+    @Test func placementsFollowTheCanvasSize() {
+        let placement = LayerPlacement(centerX: 100, centerY: 50, width: 80)
+        let moved = placement.moved(from: PixelSize(width: 200, height: 100), to: PixelSize(width: 400, height: 400))
+        #expect(moved == LayerPlacement(centerX: 200, centerY: 200, width: 160))
+    }
 }

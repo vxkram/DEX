@@ -170,8 +170,8 @@ private struct DimensionsSection: View {
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
                         ForEach(options(for: base), id: \.choice) { option in
                             let size = size(for: option.choice, base: base)
-                            DimensionChip(title: option.title, detail: "\(size.width) × \(size.height)",
-                                          isSelected: (document.geometry.resize ?? base) == size) {
+                            TwoLineChip(title: option.title, subtitle: "\(size.width) × \(size.height)",
+                                        isSelected: (document.geometry.resize ?? base) == size) {
                                 document.geometry.resize = option.choice == .original ? nil : size
                             }
                         }
@@ -207,31 +207,5 @@ private struct DimensionsSection: View {
     private func scaled(_ base: PixelSize, _ factor: Double) -> PixelSize {
         PixelSize(width: max(Int((Double(base.width) * factor).rounded()), 1),
                   height: max(Int((Double(base.height) * factor).rounded()), 1))
-    }
-}
-
-private struct DimensionChip: View {
-    let title: String
-    let detail: String
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 1) {
-                Text(title).font(.system(.caption, design: .monospaced, weight: .semibold))
-                Text(verbatim: detail).font(.caption2)
-                    .foregroundStyle(isSelected ? .white.opacity(0.85) : .secondary)
-            }
-            .frame(maxWidth: .infinity, minHeight: 38)
-            .foregroundStyle(isSelected ? .white : .primary)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(isSelected ? Theme.ember : .white.opacity(0.07)))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .strokeBorder(.white.opacity(isSelected ? 0 : 0.08)))
-            .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
