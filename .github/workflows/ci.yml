@@ -19,3 +19,36 @@ jobs:
         run: make test
       - name: Supported formats
         run: make formats
+
+  extension:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: extension
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Types
+        run: npm run check
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run zip
+      - name: Lint (Firefox)
+        run: npm run lint:firefox
+      - name: Size
+        # Keep it mini: fail if either store zip passes 400 KB.
+        run: |
+          ls -l .output/*.zip
+          for zip in .output/*.zip; do test $(stat -c%s "$zip") -le 409600 || { echo "$zip is over 400 KB"; exit 1; }; done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DEX-extension
+          path: extension/.output/*.zip

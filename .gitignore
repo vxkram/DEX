@@ -18,6 +18,8 @@ DerivedData/
 *.dmg
 *.xcarchive
 
+# Browser extension (see extension/.gitignore)
+
 # Editors
 .vscode/
 .idea/

@@ -59,11 +59,18 @@ You can also right-click images in Finder: **Services → DEX ▸ Convert to JPE
 3. Check the **Result** in the panel. It shows the format, the size of the file you'll get, and whether anything is lost. If a file will be bigger than the original, tap **Why?** to see the reason.
 4. Click **Export** (⌘E) and choose where to save. **Your original file is never changed or overwritten.**
 
+## DEX Mini for Chrome and Firefox
+A small browser extension with the same look and the same honesty about quality. It lives in [`extension/`](extension/).
+- **Edit images:** drop, paste or choose an image in the toolbar popup, or right-click any image on a page and choose **Edit with DEX…**. You can crop, rotate, flip, convert to PNG, JPEG or WebP, and resize, and the verdict tells you what each choice costs. Animated GIFs get a timeline: trim them, crop every frame, and save them as a GIF, or save one frame as PNG.
+- **Convert downloads automatically** (turn it on in the popup): WebP images arrive as PNG (or JPEG), and WebM video becomes MP4. The MP4 copies the streams untouched by default, or re-encodes to H.264 if you choose that, so it plays everywhere. Animated WebPs are left alone. If DEX can't convert a file, you keep the original.
+
+It isn't in the browser stores yet. To try it, build it as described in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#browser-extension) and load it unpacked.
+
 ## Ideas & feedback
 Have an idea, found a bug, or want a format DEX doesn't handle yet? Post it in **[Discussions](https://github.com/vxkram/DEX/discussions)**: ideas go under *Ideas*, questions under *Q&A*. Upvote the ideas you want most; that decides what comes next.
 
 ## Privacy
-Everything happens on your Mac, and DEX never uploads anything. The app itself has no network access. The one exception is **Download from Link**: a small helper inside the app fetches the downloader (yt-dlp, from its official GitHub release, checksum-verified) the first time you use it, and then fetches the audio or video you asked for. Nothing else goes online. Location data is removed from exported photos unless you choose **Metadata → Keep**.
+Everything happens on your Mac, and DEX never uploads anything. The app itself has no network access. The one exception is **Download from Link**: a small helper inside the app fetches the downloader (yt-dlp, from its official GitHub release, checksum-verified) the first time you use it, and then fetches the audio or video you asked for. Nothing else goes online. Location data is removed from exported photos unless you choose **Metadata → Keep**. The browser extension also works entirely in your browser. It fetches only the images and downloads you act on, and it sends nothing anywhere.
 
 ## Credits
 Built with libjpeg-turbo, libwebp, LAME (MP3, LGPL, shipped as its own replaceable library) and Apple's frameworks. Details and licences are in **DEX ▸ About DEX**. For developers, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
