@@ -15,7 +15,9 @@ struct ImageStage: View {
                 Group {
                     // Crop edits the opened photo on its own, even when it
                     // sits on a canvas or among other images.
-                    if isCropping, let layer = document.cropLayer {
+                    if document.tool == .enhance && document.geometry.enhance != nil {
+                        EnhanceCompare(document: document, preview: preview, display: display, available: available)
+                    } else if isCropping, let layer = document.cropLayer {
                         layerCropStage(layer, available: available)
                     } else if isCropping && !document.isFitting {
                         croppingStage(preview, display: display, available: available)
@@ -75,6 +77,64 @@ struct ImageStage: View {
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .shadow(color: .black.opacity(0.28), radius: 4, y: 2)
             .shadow(color: .black.opacity(0.45), radius: 36, y: 22)
+    }
+}
+
+/// Before and after Enhance, split by a line you drag.
+private struct EnhanceCompare: View {
+    let document: ImageDocument
+    let preview: PreviewImage
+    let display: PixelSize
+    let available: CGSize
+    @State private var split = 0.5
+
+    var body: some View {
+        let crop = document.effectiveCrop ?? PixelRect(x: 0, y: 0, width: display.width, height: display.height)
+        let scale = min(available.width / CGFloat(crop.width), available.height / CGFloat(crop.height))
+        let size = CGSize(width: CGFloat(crop.width) * scale, height: CGFloat(crop.height) * scale)
+        ZStack(alignment: .topLeading) {
+            CroppedBase(preview: preview, orientation: document.geometry.orientation, display: display, crop: crop, scale: scale)
+            if let enhanced = document.currentEnhancedPreview {
+                Image(decorative: enhanced.cgImage, scale: 1)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: size.width, height: size.height)
+                    .mask(alignment: .trailing) { Rectangle().frame(width: size.width * (1 - split)) }
+                Rectangle().fill(.white).frame(width: 2, height: size.height)
+                    .shadow(color: .black.opacity(0.5), radius: 2)
+                    .offset(x: size.width * split - 1)
+                Circle().fill(.white).frame(width: 26, height: 26)
+                    .overlay(Image(systemName: "arrow.left.and.right").font(.caption.weight(.bold)).foregroundStyle(.black))
+                    .shadow(color: .black.opacity(0.4), radius: 3)
+                    .offset(x: size.width * split - 13, y: size.height / 2 - 13)
+                HStack {
+                    Text("Before")
+                    Spacer()
+                    Text("AI")
+                }
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.6), radius: 2)
+                .frame(width: size.width)
+            }
+            if document.isEnhancingPreview || document.currentEnhancedPreview == nil {
+                if document.enhanceReady {
+                    ProgressView().controlSize(.small)
+                        .padding(8).glassEffect(.regular, in: Circle())
+                        .offset(x: size.width - 44, y: 10)
+                }
+            }
+        }
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .contentShape(Rectangle())
+        .gesture(DragGesture(minimumDistance: 0).onChanged { value in
+            split = min(max(value.location.x / max(size.width, 1), 0), 1)
+        })
+        .shadow(color: .black.opacity(0.28), radius: 4, y: 2)
+        .shadow(color: .black.opacity(0.45), radius: 36, y: 22)
+        .help("Drag to compare. The export uses every pixel of the original.")
     }
 }
 

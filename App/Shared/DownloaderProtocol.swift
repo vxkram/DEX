@@ -15,6 +15,10 @@ import Foundation
     /// into one MP4 in `DownloaderService.stagingFolder`. `convert` turns an
     /// AV1 picture into H.264 on the way.
     func downloadVideo(_ link: String, format: String, convert: Bool, reply: @escaping @Sendable (String?, String?) -> Void)
+    /// Streams an Enhance model (one of DEX's own `models-` release files)
+    /// into `file`, which the app opened in its container. Replies with an
+    /// error message, or nil when done. Progress arrives as phase 2.
+    func fetchModel(_ link: String, into file: FileHandle, reply: @escaping @Sendable (String?) -> Void)
     func cancel()
     func isToolInstalled(reply: @escaping @Sendable (Bool) -> Void)
 }

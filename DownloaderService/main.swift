@@ -98,6 +98,22 @@ final class DownloaderHandler: NSObject, DownloaderServiceProtocol, @unchecked S
         lock.withLock { task = work }
     }
 
+    func fetchModel(_ link: String, into file: FileHandle, reply: @escaping @Sendable (String?) -> Void) {
+        let progress = ProgressSender(connection.remoteObjectProxy as? DownloaderProgressProtocol)
+        let work = Task {
+            do {
+                try await ModelFetcher.fetch(link, into: file) { progress.send(2, $0) }
+                reply(nil)
+            } catch is CancellationError {
+                reply("Cancelled.")
+            } catch {
+                reply(String(describing: error))
+            }
+            try? file.close()
+        }
+        lock.withLock { task = work }
+    }
+
     func cancel() {
         lock.withLock { task?.cancel() }
     }

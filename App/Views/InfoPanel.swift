@@ -1,3 +1,4 @@
+import ImageEngine
 import MediaModel
 import SwiftUI
 
@@ -40,8 +41,42 @@ struct InfoPanel: View {
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
             }
+            InstalledModels(store: document.enhanceStore)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 16)
         }
         .scrollIndicators(.never)
+    }
+}
+
+/// The Enhance models on this Mac, each with its size and a Delete button.
+private struct InstalledModels: View {
+    let store: EnhanceStore
+
+    var body: some View {
+        let models = EnhanceModel.allCases.filter(store.isInstalled)
+        if !models.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                PanelSectionHeader("AI models")
+                ForEach(models) { model in
+                    HStack {
+                        Text(model.title).font(.callout)
+                        Spacer()
+                        Text(verbatim: EnhanceModels.installedSize(model).map {
+                            ByteCountFormatter.string(fromByteCount: $0, countStyle: .file)
+                        } ?? "")
+                        .font(.technicalSmall)
+                        .foregroundStyle(.secondary)
+                        Button("Delete", systemImage: "trash") { store.remove(model) }
+                            .labelStyle(.iconOnly)
+                            .buttonStyle(.borderless)
+                            .help("Delete \(model.title). Enhance downloads it again when needed.")
+                    }
+                    .help(model.credit)
+                }
+            }
+            .padding(.top, 8)
+        }
     }
 }
 

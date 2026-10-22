@@ -24,6 +24,8 @@ final class ImageDocument {
     private(set) var audio: AudioDocument?
     /// YouTube link → audio in Downloads.
     let linkDownload = LinkDownload()
+    /// The AI models Enhance downloads on first use.
+    let enhanceStore = EnhanceStore()
     private(set) var info: MediaInfo?
     private(set) var preview: PreviewImage?
     private(set) var loadError: String?
@@ -552,7 +554,48 @@ final class ImageDocument {
         if case .running = exportState { true } else { false }
     }
 
-    var canExport: Bool { audio.map(\.canExport) ?? (plan != nil && !isExporting) }
+    var canExport: Bool { audio.map(\.canExport) ?? (plan != nil && !isExporting && enhanceReady) }
+
+    // MARK: Enhance
+
+    /// The models the current Enhance settings need are installed.
+    var enhanceReady: Bool {
+        geometry.enhance.map { enhanceStore.missing($0.models).isEmpty } ?? true
+    }
+
+    /// Before/after on the stage: the enhanced preview of what is shown.
+    private(set) var enhancedPreview: (key: EnhancePreviewKey, image: PreviewImage)?
+    private(set) var isEnhancingPreview = false
+
+    var enhancePreviewKey: EnhancePreviewKey? {
+        guard tool == .enhance, let enhance = geometry.enhance, enhanceReady, let sourceURL else { return nil }
+        return EnhancePreviewKey(url: sourceURL, orientation: geometry.orientation, crop: effectiveCrop, enhance: enhance)
+    }
+
+    var currentEnhancedPreview: PreviewImage? {
+        guard let key = enhancePreviewKey, enhancedPreview?.key == key else { return nil }
+        return enhancedPreview?.image
+    }
+
+    func refreshEnhancedPreview() async {
+        guard let key = enhancePreviewKey, let preview, let display = displaySize, enhancedPreview?.key != key else { return }
+        isEnhancingPreview = true
+        defer { if enhancePreviewKey == key { isEnhancingPreview = false } }
+        try? await Task.sleep(for: .milliseconds(250))
+        guard !Task.isCancelled, enhancePreviewKey == key else { return }
+        do {
+            let image = try await ImageEngine.enhancedPreview(preview, orientation: key.orientation, crop: key.crop,
+                                                              display: display, settings: key.enhance)
+            if enhancePreviewKey == key { enhancedPreview = (key, image) }
+        } catch {
+            if enhancePreviewKey == key, !(error is CancellationError) { enhanceStore.error = String(describing: error) }
+        }
+    }
+
+    /// Turns Enhance on with the defaults (Fast, medium noise, 2×) or off.
+    func setEnhancing(_ on: Bool) {
+        geometry.enhance = on ? (geometry.enhance ?? Enhancement()) : nil
+    }
 
     // MARK: - Opening
 
@@ -633,6 +676,7 @@ final class ImageDocument {
         pause()
         animation = nil
         playhead = 0
+        enhancedPreview = nil
         exportTask?.cancel()
         accessedURL?.stopAccessingSecurityScopedResource()
         accessedURL = nil
@@ -1132,6 +1176,12 @@ final class ImageDocument {
             return
         }
         let request = plan.request
+        // Measuring would run the whole AI model in the background; the size
+        // is known once it's exported.
+        if request.geometry.enhance != nil {
+            estimate = SizeEstimate(request: request, bytes: nil, failure: "Measured when you export: AI enhancing takes a while.")
+            return
+        }
         estimate = SizeEstimate(request: request, bytes: nil)
         do {
             try await Task.sleep(for: .milliseconds(350))
@@ -1254,6 +1304,13 @@ final class ImageDocument {
     func revealInFinder(_ url: URL) {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
+}
+
+struct EnhancePreviewKey: Equatable {
+    let url: URL
+    let orientation: Orientation
+    let crop: PixelRect?
+    let enhance: Enhancement
 }
 
 struct CentreGuides: Equatable {

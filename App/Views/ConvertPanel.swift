@@ -97,7 +97,7 @@ private struct PDFExportSettings: View {
         let pages = document.pdfImages.count + 1
         Label(pages == 1 ? "1 page" : "\(pages) pages", systemImage: "doc.richtext")
             .font(.technical)
-            .help("The picture as you see it, then any pages added in the PDF tool (⌘4).")
+            .help("The picture as you see it, then any pages added in the PDF tool (⌘5).")
         PDFPageSizeSection(document: document)
         PDFQualitySection(document: document)
     }

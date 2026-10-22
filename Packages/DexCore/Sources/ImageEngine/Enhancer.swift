@@ -293,3 +293,40 @@ enum Enhancer {
         return CGAffineTransform(a: a, b: b, c: -b, d: a, tx: tx - (a * sx - b * sy), ty: ty - (b * sx + a * sy))
     }
 }
+
+extension ImageEngine {
+    /// A quick look at Enhance for the stage: the (upright) preview, turned
+    /// and cropped as edited, shrunk to at most `maxInput` pixels on its long
+    /// side, then enhanced. The export runs on the full-resolution pixels.
+    public static func enhancedPreview(
+        _ preview: PreviewImage, orientation: Orientation, crop: PixelRect?, display: PixelSize,
+        settings: Enhancement, maxInput: Int = 640
+    ) async throws -> PreviewImage {
+        try await MediaWork.run { token in
+            // The models work in 8-bit sRGB; an HDR preview is mapped down first.
+            let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+            let source = preview.cgImage
+            guard let context = CGContext(data: nil, width: source.width, height: source.height, bitsPerComponent: 8,
+                                          bytesPerRow: 0, space: srgb, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+            else { throw EnhanceError.failed("couldn't prepare the preview") }
+            context.draw(source, in: CGRect(x: 0, y: 0, width: source.width, height: source.height))
+            guard var image = context.makeImage() else { throw EnhanceError.failed("couldn't prepare the preview") }
+            image = try PixelOps.orient(image, orientation.exif)
+            if let crop, display.width > 0 {
+                let scale = Double(image.width) / Double(display.width)
+                let rect = PixelRect(x: Int(Double(crop.x) * scale), y: Int(Double(crop.y) * scale),
+                                     width: max(Int(Double(crop.width) * scale), 1), height: max(Int(Double(crop.height) * scale), 1))
+                if let clamped = rect.clamped(to: PixelSize(width: image.width, height: image.height)) {
+                    image = try PixelOps.crop(image, clamped)
+                }
+            }
+            let longest = max(image.width, image.height)
+            if longest > maxInput {
+                let factor = Double(maxInput) / Double(longest)
+                image = try PixelOps.resize(image, to: PixelSize(width: max(Int(Double(image.width) * factor), 1),
+                                                                 height: max(Int(Double(image.height) * factor), 1)))
+            }
+            return PreviewImage(cgImage: try Enhancer.enhance(image, settings, token: token))
+        }
+    }
+}

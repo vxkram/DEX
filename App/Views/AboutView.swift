@@ -57,6 +57,12 @@ struct AboutView: View {
                             licenses: [("License (LGPL)", "LAME-COPYING")]
                         )
                         Credit(
+                            name: "Real-ESRGAN and GFPGAN",
+                            detail: "Enhance's AI models, downloaded when first used. Real-ESRGAN © Xintao Wang (BSD-3-Clause). GFPGAN © Tencent ARC Lab (Apache-2.0), trained on FFHQ, whose images are CC BY-NC-SA.",
+                            note: nil,
+                            licenses: []
+                        )
+                        Credit(
                             name: "Background texture",
                             detail: "Photo by who's denilo on Unsplash, under the Unsplash License.",
                             note: nil,
