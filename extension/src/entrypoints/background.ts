@@ -132,7 +132,7 @@ export default defineBackground(() => {
 
   browser.contextMenus.onClicked.addListener((info, tab) => {
     if (info.menuItemId === 'dex-area' && tab) return startArea(tab);
-    if (info.menuItemId === 'dex-frame' && tab) return saveFrame(tab, info.frameId ?? 0, info.srcUrl);
+    if (info.menuItemId === 'dex-frame' && tab) return saveFrame(tab, 'edit', info.frameId ?? 0, info.srcUrl);
     const src = info.srcUrl;
     if (!src) return;
     if (info.menuItemId === 'dex-image') {
@@ -212,48 +212,51 @@ export default defineBackground(() => {
     }
   }
 
-  /** The video's own frame, at its full resolution, read inside the page. */
-  async function saveFrame(tab: Browser.tabs.Tab, frameId: number, src?: string) {
+  /**
+   * The video's own frame, at its full resolution, read inside the page.
+   * From the popup, every frame of the tab is searched (videos are often
+   * embedded) and the biggest video wins; from a right-click, just that one.
+   */
+  async function saveFrame(tab: Browser.tabs.Tab, action: 'save' | 'edit', frameId?: number, src?: string) {
     try {
-      const [{ result }] = await browser.scripting.executeScript({
-        target: { tabId: tab.id!, frameIds: [frameId] },
+      const results = await browser.scripting.executeScript({
+        target: frameId == null ? { tabId: tab.id!, allFrames: true } : { tabId: tab.id!, frameIds: [frameId] },
         args: [src ?? ''],
         func: (src: string) => {
           const videos = [...document.querySelectorAll('video')];
           const video = videos.find((v) => src && (v.currentSrc === src || v.src === src))
             ?? videos.filter((v) => v.videoWidth > 0).sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0];
-          if (!video || !video.videoWidth) return { error: 'There’s no video frame to save yet.' };
+          if (!video || !video.videoWidth) return null;
           const canvas = document.createElement('canvas');
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
           canvas.getContext('2d')!.drawImage(video, 0, 0);
+          const area = video.clientWidth * video.clientHeight;
           try {
-            return { dataUrl: canvas.toDataURL('image/png'), title: document.title, time: video.currentTime };
+            return { dataUrl: canvas.toDataURL('image/png'), title: document.title, time: video.currentTime, area };
           } catch {
-            return { error: 'This site protects its video, so DEX can’t copy the frame. Use “Screenshot an area” instead.' };
+            return { error: 'This site protects its video, so DEX can’t copy the frame. Use Select Area instead.', area };
           }
         },
       });
-      const reply = result as { dataUrl?: string; title?: string; time?: number; error?: string } | undefined;
-      if (!reply?.dataUrl) return notify(reply?.error ?? protectedPage);
-      const t = Math.floor(reply.time ?? 0);
+      type Grab = { dataUrl?: string; title?: string; time?: number; error?: string; area: number };
+      const best = results.map((r) => r.result as Grab | null).filter((r): r is Grab => !!r).sort((a, b) => b.area - a.area)[0];
+      if (!best) return notify('There’s no video on this page, or it hasn’t started yet.');
+      if (!best.dataUrl) return notify(best.error!);
+      const t = Math.floor(best.time ?? 0);
       const stamp = `${Math.floor(t / 60)}.${String(t % 60).padStart(2, '0')}`;
-      const title = (reply.title ?? 'Video').replace(/ - YouTube$/, '').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 80).trim() || 'Video';
-      await openInEditor(await (await fetch(reply.dataUrl)).blob(), `${title} ${stamp}.png`, tab);
+      const title = (best.title ?? 'Video').replace(/^\(\d+\)\s*/, '').replace(/ - YouTube$/, '').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 80).trim() || 'Video';
+      const name = `${title} ${stamp}.png`;
+      const blob = await (await fetch(best.dataUrl)).blob();
+      if (action === 'edit') return openInEditor(blob, name, tab);
+      // Firefox won't download data: URLs; Chrome's service worker can't make blob: ones.
+      const url = import.meta.env.FIREFOX ? URL.createObjectURL(blob) : best.dataUrl;
+      const id = await browser.downloads.download({ url, filename: name, conflictAction: 'uniquify' });
+      if (import.meta.env.FIREFOX) ours.set(id, { blobUrl: url });
+      notify(`Saved ${name} to Downloads`);
     } catch {
       notify(protectedPage);
     }
-  }
-
-  /** A frame from the YouTube player bar: straight to Downloads, or into the editor. */
-  async function saveOrEditFrame(dataUrl: string, name: string, action: 'save' | 'edit', tab?: Browser.tabs.Tab) {
-    const blob = await (await fetch(dataUrl)).blob();
-    if (action === 'edit') return openInEditor(blob, name, tab);
-    // Firefox won't download data: URLs; Chrome's service worker can't make blob: ones.
-    const url = import.meta.env.FIREFOX ? URL.createObjectURL(blob) : dataUrl;
-    const id = await browser.downloads.download({ url, filename: name, conflictAction: 'uniquify' });
-    if (import.meta.env.FIREFOX) ours.set(id, { blobUrl: url });
-    notify(`Saved ${name} to Downloads`);
   }
 
   browser.commands.onCommand.addListener(async (command) => {
@@ -263,21 +266,17 @@ export default defineBackground(() => {
   });
 
   browser.runtime.onMessage.addListener((message: {
-    target?: string; type: string; mode?: 'area' | 'page'; rect?: Area | null; viewport?: { width: number; height: number };
-    action?: 'save' | 'edit'; dataUrl?: string; name?: string;
+    target?: string; type: string; mode?: 'area' | 'page' | 'frame'; rect?: Area | null; viewport?: { width: number; height: number };
   }, sender) => {
     if (message.target !== 'background') return;
-    if (message.type === 'frame' && message.dataUrl && message.name) {
-      saveOrEditFrame(message.dataUrl, message.name, message.action ?? 'save', sender.tab);
-    } else if (message.type === 'frame-failed') {
-      notify('This video is protected, so DEX can’t copy the frame. Use “Select Area” instead.');
-    } else if (message.type === 'area-selected' && sender.tab) {
+    if (message.type === 'area-selected' && sender.tab) {
       captureTab(sender.tab, message.rect ?? null, message.viewport!);
     } else if (message.type === 'screenshot') {
       // From the popup, which closes as soon as it asks.
       browser.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
         if (!tab) return;
         if (message.mode === 'area') startArea(tab);
+        else if (message.mode === 'frame') saveFrame(tab, 'save');
         // A whole-page shot isn't cropped, so the viewport size doesn't matter.
         else captureTab(tab, null, { width: 1, height: 1 });
       });

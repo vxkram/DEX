@@ -62,7 +62,7 @@ You can also right-click images in Finder: **Services → DEX ▸ Convert to JPE
 ## DEX Mini for Chrome and Firefox
 A small browser extension with the same look and the same honesty about quality. It lives in [`extension/`](extension/).
 - **Edit images:** choose an image from the toolbar popup, or right-click any image on a page and choose **Edit with DEX…**. You can crop, rotate, flip, convert to PNG, JPEG or WebP, and resize, and the verdict tells you what each choice costs. Animated GIFs get a timeline: trim them, crop every frame, and save them as a GIF, or save one frame as PNG.
-- **Screenshot any page:** drag a box over part of a page (Alt+Shift+S), or capture the whole visible page, and the shot opens in the editor. Pause a YouTube video and a DEX bar on the player saves the frame as a PNG at the video's full resolution; on other sites, right-click the video.
+- **Screenshot any page:** drag a box over part of a page (Alt+Shift+S), or capture the whole visible page, and the shot opens in the editor. With a video on the page (YouTube included), **Save Video Frame** in the popup saves the current frame as a PNG at the video's full resolution.
 - **Convert downloads automatically** (turn it on in the popup): WebP images arrive as PNG (or JPEG), and WebM video becomes MP4. The MP4 copies the streams untouched by default, or re-encodes to H.264 if you choose that, so it plays everywhere. Animated WebPs are left alone. If DEX can't convert a file, you keep the original.
 
 It isn't in the browser stores yet. To try it, build it as described in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#browser-extension) and load it unpacked.

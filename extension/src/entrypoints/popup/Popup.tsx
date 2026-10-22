@@ -15,9 +15,29 @@ async function openEditor(file?: File) {
 }
 
 /** The background takes the shot: the popup closes before the page can be captured. */
-function screenshot(mode: 'area' | 'page') {
+function screenshot(mode: 'area' | 'page' | 'frame') {
   browser.runtime.sendMessage({ target: 'background', type: 'screenshot', mode }).catch(() => {});
   setTimeout(() => window.close(), 50);
+}
+
+/** Looks for a playing or paused video in the current tab, iframes included. */
+async function findVideo(): Promise<{ width: number; height: number } | null> {
+  try {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id == null) return null;
+    const results = await browser.scripting.executeScript({
+      target: { tabId: tab.id, allFrames: true },
+      func: () => [...document.querySelectorAll('video')]
+        .filter((v) => v.videoWidth > 0)
+        .map((v) => ({ width: v.videoWidth, height: v.videoHeight, area: v.clientWidth * v.clientHeight })),
+    });
+    const all = results.flatMap((r) => (r.result as { width: number; height: number; area: number }[] | undefined) ?? []);
+    const best = all.sort((a, b) => b.area - a.area)[0];
+    return best ? { width: best.width, height: best.height } : null;
+  } catch {
+    // Pages the browser protects can't be looked into.
+    return null;
+  }
 }
 
 const webpHelp = { png: 'PNG: lossless', jpeg: 'JPEG: lossy, quality 95', off: '' };
@@ -26,6 +46,8 @@ const webmHelp = { remux: 'MP4: streams copied, no re-encode', h264: 'H.264: re-
 export function Popup() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [canH264, setCanH264] = useState(true);
+  /** The biggest video on the page, if it has a frame to save. */
+  const [video, setVideo] = useState<{ width: number; height: number } | null>(null);
   const picker = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -33,6 +55,7 @@ export function Popup() {
     Promise.all([loadSettings(), browser.permissions.contains(allSites)])
       .then(([s, granted]) => setSettings({ ...s, auto: s.auto && granted }));
     canReencode().then(setCanH264);
+    findVideo().then(setVideo);
   }, []);
 
   const update = (change: Partial<Settings>) => {
@@ -71,6 +94,11 @@ export function Popup() {
         <Icon name="photo" /> Choose Image…
       </button>
 
+      {video && (
+        <button type="button" class="button frame" onClick={() => screenshot('frame')}>
+          <Icon name="download" /> Save Video Frame <span class="technical">{video.width} × {video.height}</span>
+        </button>
+      )}
       <div class="shots">
         <button type="button" class="button" onClick={() => screenshot('area')} title="Alt+Shift+S on any page">
           <Icon name="crop" /> Select Area

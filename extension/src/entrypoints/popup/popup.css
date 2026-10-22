@@ -16,3 +16,6 @@ body { width: 280px; font-size: 12px; }
 .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .shots .button { min-height: 30px; padding: 0 8px; font-size: 12px; }
 .shots .button svg { width: 14px; height: 14px; }
+.button.frame { width: 100%; min-height: 32px; font-size: 12px; font-weight: 600; }
+.button.frame svg { width: 14px; height: 14px; }
+.button.frame .technical { margin-left: auto; font-size: 11px; font-weight: 500; color: var(--secondary); }
