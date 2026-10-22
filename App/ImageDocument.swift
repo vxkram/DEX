@@ -76,6 +76,8 @@ final class ImageDocument {
     @ObservationIgnored private var pdfPreviewFolder: URL?
     /// Extra pages after the opened image for Images → PDF.
     var pdfImages: [ComposedImage] = []
+    /// Convert saves a PDF instead of an image (PDF isn't an ImageFormat).
+    var exportAsPDF = false
 
     // MARK: Compose state
     var composeMode: ComposeMode = .layers
@@ -473,6 +475,7 @@ final class ImageDocument {
         geometry = Geometry()
         cropAspect = .free
         fitBackground = .white
+        exportAsPDF = false
         optimize = false
         quality = .maximum
         estimate = nil
@@ -859,7 +862,7 @@ final class ImageDocument {
         // untouched, it's passed as the file so JPEGs aren't re-encoded.
         let editedPlan = (hasEdits || composition != nil) ? plan : nil
         let extras = pdfImages.map { PDFEngine.PageImage(url: $0.url) }
-        let (pageSize, margin, imageQuality) = (pdfPageSize, pdfMargin, pdfImageQuality)
+        let (pageSize, margin, imageQuality) = (pdfPageSetup.size, pdfPageSetup.margin, pdfImageQuality)
         let title = sourceURL.deletingPathExtension().lastPathComponent
         exportState = .running(0)
         exportTask = Task {
@@ -884,8 +887,24 @@ final class ImageDocument {
         }
     }
 
+    /// A canvas made at A4 or Letter size (300 dpi), if there is one.
+    var canvasPaper: (title: String, size: PDFEngine.PageSize)? {
+        guard composeMode == .canvas else { return nil }
+        switch (canvasSize.width, canvasSize.height) {
+        case (2480, 3508), (3508, 2480): return ("A4", .a4)
+        case (2550, 3300), (3300, 2550): return ("Letter", .letter)
+        default: return nil
+        }
+    }
+
+    /// Page size and margin for Images → PDF: a paper-sized canvas is
+    /// that paper with no margin, so it prints at true size.
+    var pdfPageSetup: (size: PDFEngine.PageSize, margin: Double) {
+        canvasPaper.map { ($0.size, 0) } ?? (pdfPageSize, pdfMargin)
+    }
+
     var pdfEstimateKey: PDFEstimateKey {
-        PDFEstimateKey(source: sourceURL, pages: pdfImages.map(\.url), pageSize: pdfPageSize, margin: pdfMargin,
+        PDFEstimateKey(source: sourceURL, pages: pdfImages.map(\.url), pageSize: pdfPageSetup.size, margin: pdfPageSetup.margin,
                        quality: pdfImageQuality, request: (hasEdits || composition != nil) ? request : nil)
     }
 
@@ -971,7 +990,7 @@ final class ImageDocument {
         if let audio {
             audio.export()
         } else if tool == .convert {
-            presentSavePanel()
+            if exportAsPDF { presentPDFSavePanel() } else { presentSavePanel() }
         } else {
             tool = .convert
         }

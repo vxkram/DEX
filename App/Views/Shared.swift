@@ -163,6 +163,7 @@ struct ExportFooter: View {
                 document.export()
             } label: {
                 Text(document.tool != .convert ? "Choose Format & Export →"
+                     : document.exportAsPDF ? "Export PDF…"
                      : document.plan?.verdict == .lossy ? "Export with Loss…" : "Export…")
                     .font(.headline)
                     .frame(maxWidth: .infinity, minHeight: 30)

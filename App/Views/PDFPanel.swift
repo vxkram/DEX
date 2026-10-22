@@ -125,6 +125,16 @@ private struct ImagesToPDF: View {
             Explanation("One image per page, any format. Location data is removed.")
         }
 
+        PDFQualitySection(document: document)
+        PDFPageSizeSection(document: document)
+    }
+}
+
+/// How much images are compressed inside the PDF, with its measured size.
+struct PDFQualitySection: View {
+    @Bindable var document: ImageDocument
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             PanelSectionHeader("Quality")
             let quality = document.pdfImageQuality ?? 1
@@ -148,26 +158,37 @@ private struct ImagesToPDF: View {
                     .font(.technicalSmall).foregroundStyle(.secondary)
             }
         }
+    }
+}
 
+/// Fit, A4 or Letter. A canvas made at paper size always fills that paper.
+struct PDFPageSizeSection: View {
+    @Bindable var document: ImageDocument
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             PanelSectionHeader("Page size")
-            HStack(spacing: 6) {
-                TwoLineChip(title: "Fit", subtitle: "image size", isSelected: document.pdfPageSize == .fitImage) { document.pdfPageSize = .fitImage }
-                TwoLineChip(title: "A4", subtitle: "210 × 297 mm", isSelected: document.pdfPageSize == .a4) { document.pdfPageSize = .a4 }
-                TwoLineChip(title: "Letter", subtitle: "8.5 × 11 in", isSelected: document.pdfPageSize == .letter) { document.pdfPageSize = .letter }
-            }
-            if document.pdfPageSize != .fitImage {
-                LabeledSlider(title: "Margin", value: document.pdfMargin, range: 0...72,
-                              display: "\(Int((document.pdfMargin / 72 * 25.4).rounded())) mm") {
-                    document.pdfMargin = $0.rounded()
+            if let paper = document.canvasPaper {
+                Explanation("The \(paper.title) canvas from Compose fills one \(paper.title) page, edge to edge.")
+            } else {
+                HStack(spacing: 6) {
+                    TwoLineChip(title: "Fit", subtitle: "image size", isSelected: document.pdfPageSize == .fitImage) { document.pdfPageSize = .fitImage }
+                    TwoLineChip(title: "A4", subtitle: "210 × 297 mm", isSelected: document.pdfPageSize == .a4) { document.pdfPageSize = .a4 }
+                    TwoLineChip(title: "Letter", subtitle: "8.5 × 11 in", isSelected: document.pdfPageSize == .letter) { document.pdfPageSize = .letter }
                 }
-                Explanation("Pages turn landscape automatically for wide images.")
+                if document.pdfPageSize != .fitImage {
+                    LabeledSlider(title: "Margin", value: document.pdfMargin, range: 0...72,
+                                  display: "\(Int((document.pdfMargin / 72 * 25.4).rounded())) mm") {
+                        document.pdfMargin = $0.rounded()
+                    }
+                    Explanation("Pages turn landscape automatically for wide images.")
+                }
             }
         }
     }
 }
 
-private struct PDFSizeLine: View {
+struct PDFSizeLine: View {
     let document: ImageDocument
 
     var body: some View {

@@ -12,29 +12,33 @@ struct ConvertPanel: View {
                 VStack(alignment: .leading, spacing: 22) {
                     VStack(spacing: 10) {
                         PanelSectionHeader("Format")
-                        FormatGrid(formats: document.writableFormats, selection: $document.target)
+                        FormatGrid(formats: document.writableFormats, selection: $document.target, isPDF: $document.exportAsPDF)
                     }
 
-                    VStack(spacing: 10) {
-                        PanelSectionHeader("Metadata")
-                        Picker("Metadata", selection: $document.metadata) {
-                            Text("Keep").tag(MetadataPolicy.keepAll)
-                            Text("No location").tag(MetadataPolicy.removeLocation)
-                            Text("None").tag(MetadataPolicy.removeAll)
+                    if document.exportAsPDF {
+                        PDFExportSettings(document: document)
+                    } else {
+                        VStack(spacing: 10) {
+                            PanelSectionHeader("Metadata")
+                            Picker("Metadata", selection: $document.metadata) {
+                                Text("Keep").tag(MetadataPolicy.keepAll)
+                                Text("No location").tag(MetadataPolicy.removeLocation)
+                                Text("None").tag(MetadataPolicy.removeAll)
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            .frame(maxWidth: .infinity)
+                            .controlSize(.large)
                         }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .frame(maxWidth: .infinity)
-                        .controlSize(.large)
-                    }
 
-                    DisclosureGroup("Advanced", isExpanded: $showsAdvanced) {
-                        AdvancedSettings(document: document)
-                            .padding(.top, 10)
-                    }
-                    .font(.callout)
+                        DisclosureGroup("Advanced", isExpanded: $showsAdvanced) {
+                            AdvancedSettings(document: document)
+                                .padding(.top, 10)
+                        }
+                        .font(.callout)
 
-                    ResultSection(document: document)
+                        ResultSection(document: document)
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
@@ -51,15 +55,18 @@ struct ConvertPanel: View {
 private struct FormatGrid: View {
     let formats: [ImageFormat]
     @Binding var selection: ImageFormat
+    /// PDF sits after the image formats; it isn't an image format itself.
+    @Binding var isPDF: Bool
 
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
-            ForEach(formats, id: \.self) { format in
-                let isSelected = selection == format
+            ForEach(formats.map(Optional.some) + [nil], id: \.self) { format in
+                let isSelected = format.map { !isPDF && selection == $0 } ?? isPDF
                 Button {
-                    selection = format
+                    if let format { selection = format }
+                    isPDF = format == nil
                 } label: {
-                    Text(format.displayName)
+                    Text(format?.displayName ?? "PDF")
                         .font(.system(.callout, design: .monospaced, weight: .semibold))
                         .frame(maxWidth: .infinity, minHeight: 34)
                         .foregroundStyle(isSelected ? .white : .primary)
@@ -77,6 +84,26 @@ private struct FormatGrid: View {
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
+    }
+}
+
+// MARK: - PDF
+
+/// Convert ▸ PDF: the opened image, as edited, saved as a PDF page.
+private struct PDFExportSettings: View {
+    @Bindable var document: ImageDocument
+
+    var body: some View {
+        let pages = document.pdfImages.count + 1
+        VStack(alignment: .leading, spacing: 6) {
+            Label(pages == 1 ? "1 page" : "\(pages) pages", systemImage: "doc.richtext")
+                .font(.technical)
+            Explanation(pages == 1
+                        ? "The picture as you see it, with your crop, Fit and Compose. Add more pages in the PDF tool (⌘4)."
+                        : "This picture first, then the pages added in the PDF tool (⌘4).")
+        }
+        PDFPageSizeSection(document: document)
+        PDFQualitySection(document: document)
     }
 }
 
